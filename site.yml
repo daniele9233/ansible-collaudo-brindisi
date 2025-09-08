@@ -1,11 +1,10 @@
 ---
-# PRIMO PLAY: Setup disco dedicato per Rancher su tutti i server
-- hosts: all
+# PRIMO PLAY: Setup disco dedicato per tutti i nodi del cluster
+- hosts: masters:new_managers:workers:ingress
   become: yes
   gather_facts: yes
   roles:
     - role: create_disk
-
 
 # SECONDO PLAY: Aggiorna /etc/hosts su tutti i server
 - hosts: all,local
