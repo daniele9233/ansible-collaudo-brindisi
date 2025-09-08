@@ -1,0 +1,78 @@
+---
+# PRIMO PLAY: Setup disco dedicato per Rancher su tutti i server
+- hosts: all
+  become: yes
+  gather_facts: yes
+  roles:
+    - role: create_disk
+
+
+# SECONDO PLAY: Aggiorna /etc/hosts su tutti i server
+- hosts: all,local
+  become: yes
+  gather_facts: no
+  roles:
+    - role: update_hosts_file
+
+
+# TERZO PLAY: Installazione Rancher su TUTTI i masters
+- hosts: masters
+  become: yes
+  gather_facts: no
+  roles:
+    - role: master1_install
+    - role: master1_config
+    - role: master1_kubectl
+    - role: master1_helm_cert_manager_install
+
+
+# QUARTO PLAY: Creazione cluster RKE2 su TUTTI i masters
+- hosts: masters
+  become: yes
+  gather_facts: no
+  roles:
+    - role: master1_create_cluster
+
+# PAUSA tra quarto e quinto play
+- name: "Pausa dopo creazione cluster"
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Attendi 180 secondi prima setup kubectl
+      pause:
+        seconds: 180
+        prompt: "Attendendo 60 secondi dopo creazione cluster..."
+
+# QUINTO PLAY: Setup kubectl sui nuovi manager
+- hosts: new_managers
+  become: yes
+  gather_facts: no
+  roles:
+    - kubectl_setup
+
+
+# SESTO PLAY: Edit DNS Cattle-System
+- hosts: new_managers
+  become: yes
+  gather_facts: no
+  roles:
+    - kubectl_setup
+
+
+# DECIMO PLAY: Nginx install
+- name: Install and configure Nginx
+  hosts: nginx_servers
+  become: yes
+  vars_files:
+    - group_vars/all.yml
+  roles:
+    - nginx_install
+  post_tasks:
+    - name: Display completion message
+      debug:
+        msg:
+          - "Nginx installation and configuration completed successfully!"
+          - "Server configured for: {{ nginx_server_name }}"
+          - "SSL Certificate: {{ nginx_ssl_cert_path }}"
+          - "SSL Key: {{ nginx_ssl_key_path }}"
+          - "Remember to copy your SSL certificates to {{ nginx_cert_dir }}/"

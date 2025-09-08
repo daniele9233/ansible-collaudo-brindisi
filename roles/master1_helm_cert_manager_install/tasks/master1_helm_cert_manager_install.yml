@@ -1,0 +1,69 @@
+---
+- name: Add Rancher Helm repository
+  command: helm repo add rancher-stable https://releases.rancher.com/server-charts/stable
+
+- name: Create cattle-system namespace
+  command: kubectl create namespace cattle-system
+
+- name: Update Helm repositories
+  command: helm repo update
+
+- name: Set kube permission
+  command: chmod 600 /root/.kube/config
+
+- name: Copy fullchain.pem to remote host
+  copy:
+    src: "{{ fullchain_pem_file }}"
+    dest: "{{ remote_cert_path }}/fullchain.pem"
+    mode: '0644'
+
+- name: Copy privkey.pem to remote host
+  copy:
+    src: "{{ privkey_pem_file }}"
+    dest: "{{ remote_cert_path }}/privkey.pem"
+    mode: '0600'
+
+- name: Copy cacerts.pem to remote host
+  copy:
+    src: "{{ cacerts_pem_file }}"
+    dest: "{{ remote_cert_path }}/cacerts.pem"
+    mode: '0644'
+
+- name: Create TLS secret for Rancher ingress
+  command: kubectl -n cattle-system create secret tls tls-rancher-ingress --cert={{ remote_cert_path }}/fullchain.pem --key={{ remote_cert_path }}/privkey.pem
+
+- name: Create CA secret for Rancher
+  command: kubectl -n cattle-system create secret generic tls-ca --from-file={{ remote_cert_path }}/cacerts.pem
+
+- name: Verify secrets creation
+  command: kubectl get secret -n cattle-system
+
+- name: Install Rancher with Helm
+  command: >
+    helm install rancher rancher-stable/rancher
+    --namespace cattle-system
+    --set hostname={{ rancher_domain }}
+    --set bootstrapPassword={{ rancher_password }}
+    --version {{ rancher_version }}
+    --set ingress.tls.source=secret
+    --set privateCA=true
+
+- name: Wait for Rancher to be ready
+  command: kubectl -n cattle-system wait --for=condition=ready pod -l app=rancher --timeout=600s
+  ignore_errors: yes
+
+- name: Check Rancher pod status
+  command: kubectl -n cattle-system get pods -l app=rancher
+  register: rancher_pods
+
+- name: Display Rancher pod status
+  debug:
+    var: rancher_pods.stdout_lines
+
+- name: Check Rancher service status
+  command: kubectl -n cattle-system get svc rancher
+  register: rancher_svc
+
+- name: Display Rancher service status
+  debug:
+    var: rancher_svc.stdout_lines

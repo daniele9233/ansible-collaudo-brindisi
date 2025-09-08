@@ -1,0 +1,72 @@
+---
+# roles/update_hosts_file/tasks/main.yml
+
+- name: Get master node IP from inventory
+  set_fact:
+    rancher_master_ip: "{{ hostvars[groups['masters'][0]]['ansible_host'] }}"
+  run_once: true
+
+- name: Debug values
+  debug:
+    msg: |
+      Rancher Domain: {{ rancher_domain }}
+      Master IP: {{ rancher_master_ip }}
+      Current Host: {{ inventory_hostname }}
+
+- name: Remove old entries for rancher domain from /etc/hosts
+  lineinfile:
+    path: /etc/hosts
+    regexp: '.*\s+{{ rancher_domain | regex_escape }}(\s|$)'
+    state: absent
+    backup: yes
+  register: old_entries_removed
+
+- name: Remove old entries by IP (cleanup any existing entries with the master IP)
+  lineinfile:
+    path: /etc/hosts
+    regexp: '^{{ rancher_master_ip | regex_escape }}\s+'
+    state: absent
+
+- name: Add new entry for rancher domain in /etc/hosts
+  lineinfile:
+    path: /etc/hosts
+    line: "{{ rancher_master_ip }} {{ rancher_domain }}"
+    regexp: '^{{ rancher_master_ip | regex_escape }}\s+{{ rancher_domain | regex_escape }}(\s|$)'
+    state: present
+    backup: yes
+  register: hosts_updated
+
+- name: Verify /etc/hosts entry
+  shell: grep "{{ rancher_domain }}" /etc/hosts
+  register: hosts_verification
+  changed_when: false
+
+- name: Show hosts file verification
+  debug:
+    msg: |
+      Hosts file updated: {{ hosts_updated.changed }}
+      Current entry: {{ hosts_verification.stdout }}
+      
+- name: Test DNS resolution
+  shell: nslookup {{ rancher_domain }}
+  register: dns_test
+  changed_when: false
+  ignore_errors: yes
+
+- name: Show DNS resolution test
+  debug:
+    msg: |
+      DNS Resolution Test:
+      {{ dns_test.stdout if dns_test.rc == 0 else 'DNS resolution failed, using /etc/hosts entry' }}
+
+- name: Test connectivity to rancher domain
+  shell: ping -c 2 {{ rancher_domain }}
+  register: ping_test
+  changed_when: false
+  ignore_errors: yes
+
+- name: Show connectivity test
+  debug:
+    msg: |
+      Connectivity Test:
+      {{ 'SUCCESS - Can reach ' + rancher_domain if ping_test.rc == 0 else 'FAILED - Cannot reach ' + rancher_domain }}

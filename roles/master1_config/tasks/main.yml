@@ -1,0 +1,6 @@
+---
+- name: Create /etc/rancher/rke2/config.yaml on master1
+  template:
+    src: config_master1.yaml.j2
+    dest: /etc/rancher/rke2/config.yaml
+    #  when: inventory_hostname == '{{ master_node_name }}'

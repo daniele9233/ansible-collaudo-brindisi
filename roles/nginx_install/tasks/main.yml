@@ -1,0 +1,99 @@
+---
+- name: Update apt cache
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+
+- name: Install Nginx
+  apt:
+    name: nginx
+    state: present
+
+- name: Ensure Nginx service is stopped before configuration
+  systemd:
+    name: nginx
+    state: stopped
+
+- name: Create Nginx certificate directory
+  file:
+    path: "{{ nginx_cert_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Copy SSL certificate to remote server
+  copy:
+    src: "{{ local_ssl_cert_path }}"
+    dest: "{{ nginx_ssl_cert_path }}"
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart nginx
+
+- name: Copy SSL private key to remote server
+  copy:
+    src: "{{ local_ssl_key_path }}"
+    dest: "{{ nginx_ssl_key_path }}"
+    owner: root
+    group: root
+    mode: '0600'
+  notify: restart nginx
+
+- name: Create Nginx conf.d directory
+  file:
+    path: /etc/nginx/conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Create Nginx conf-http.d directory
+  file:
+    path: /etc/nginx/conf-http.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Backup original nginx.conf
+  copy:
+    src: /etc/nginx/nginx.conf
+    dest: /etc/nginx/nginx.conf.backup
+    remote_src: yes
+    backup: yes
+  ignore_errors: yes
+
+- name: Deploy Nginx configuration from template
+  template:
+    src: nginx.conf.j2
+    dest: /etc/nginx/nginx.conf
+    owner: root
+    group: root
+    mode: '0644'
+    backup: yes
+  notify: restart nginx
+
+- name: Test Nginx configuration
+  command: nginx -t
+  register: nginx_test
+  changed_when: false
+
+- name: Display Nginx test result
+  debug:
+    var: nginx_test.stdout_lines
+
+- name: Enable and start Nginx service
+  systemd:
+    name: nginx
+    enabled: yes
+    state: started
+
+- name: Check if Nginx is running
+  systemd:
+    name: nginx
+  register: nginx_status
+
+- name: Display Nginx status
+  debug:
+    msg: "Nginx is {{ nginx_status.status.ActiveState }}"

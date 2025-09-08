@@ -1,0 +1,177 @@
+---
+- name: Copy kubectl binary to system path
+  copy:
+    src: /var/lib/rancher/rke2/bin/kubectl
+    dest: /usr/local/bin/kubectl
+    mode: '0755'
+    owner: root
+    group: root
+    remote_src: yes
+
+- name: Create .kube directory for root
+  file:
+    path: /root/.kube
+    state: directory
+    mode: '0755'
+    owner: root
+    group: root
+
+- name: Copy RKE2 kubeconfig to root .kube directory
+  copy:
+    src: /etc/rancher/rke2/rke2.yaml
+    dest: /root/.kube/config
+    mode: '0600'
+    owner: root
+    group: root
+    remote_src: yes
+
+- name: Verify kubectl is working
+  shell: kubectl get nodes
+  register: kubectl_test
+  environment:
+    KUBECONFIG: /root/.kube/config
+
+- name: Show kubectl test result
+  debug:
+    msg: |
+      Kubectl test result:
+      {{ kubectl_test.stdout }}
+
+- name: Wait 60 seconds before applying DNS fix
+  pause:
+    seconds: 60
+
+- name: Wait for cattle-system namespace to exist
+  shell: kubectl get namespace cattle-system
+  register: namespace_check
+  environment:
+    KUBECONFIG: /root/.kube/config
+  retries: 20
+  delay: 30
+  until: namespace_check.rc == 0
+  ignore_errors: yes
+
+- name: Show namespace status
+  debug:
+    msg: |
+      Cattle-system namespace: {{ 'Found' if namespace_check.rc == 0 else 'Not found' }}
+
+- name: Wait for cattle-cluster-agent deployment to exist
+  shell: kubectl get deployment cattle-cluster-agent -n cattle-system
+  register: deployment_check
+  environment:
+    KUBECONFIG: /root/.kube/config
+  retries: 30
+  delay: 30
+  until: deployment_check.rc == 0
+  ignore_errors: yes
+
+- name: Show deployment availability
+  debug:
+    msg: |
+      Cattle-cluster-agent deployment: {{ 'Found' if deployment_check.rc == 0 else 'Not found' }}
+      {% if deployment_check.rc != 0 %}
+      This is normal if nodes haven't fully registered with Rancher yet.
+      You may need to run this role again later.
+      {% endif %}
+
+- name: Check current cattle-cluster-agent deployment
+  shell: kubectl get deployment cattle-cluster-agent -n cattle-system -o yaml
+  register: current_deployment
+  environment:
+    KUBECONFIG: /root/.kube/config
+  when: deployment_check.rc == 0
+
+- name: Show current deployment (before changes)
+  debug:
+    var: current_deployment.stdout
+  when: deployment_check.rc == 0 and current_deployment is defined
+
+- name: Apply DNS fix to cattle-cluster-agent deployment
+  shell: |
+    kubectl patch deployment cattle-cluster-agent -n cattle-system --type='merge' -p='
+    {
+      "spec": {
+        "template": {
+          "spec": {
+            "hostAliases": [
+              {
+                "hostnames": ["{{ rancher_domain | regex_replace("^https?://", "") }}"],
+                "ip": "{{ master_node_ip }}"
+              }
+            ],
+            "dnsPolicy": "ClusterFirst"
+          }
+        }
+      }
+    }'
+  register: patch_result
+  environment:
+    KUBECONFIG: /root/.kube/config
+  when: deployment_check.rc == 0
+
+- name: Show patch result
+  debug:
+    msg: |
+      Patch applied: {{ 'Yes' if patch_result.rc == 0 else 'No' }}
+      Output: {{ patch_result.stdout }}
+      Error: {{ patch_result.stderr if patch_result.stderr is defined else 'No error' }}
+  when: deployment_check.rc == 0 and patch_result is defined
+
+- name: Wait for deployment rollout to complete
+  shell: kubectl rollout status deployment/cattle-cluster-agent -n cattle-system --timeout=300s
+  register: rollout_status
+  environment:
+    KUBECONFIG: /root/.kube/config
+  ignore_errors: yes
+  when: deployment_check.rc == 0 and patch_result is defined and patch_result.rc == 0
+
+- name: Show rollout status
+  debug:
+    var: rollout_status.stdout
+  when: deployment_check.rc == 0 and rollout_status is defined
+
+- name: Verify final deployment configuration
+  shell: kubectl get deployment cattle-cluster-agent -n cattle-system -o yaml | grep -A 10 hostAliases
+  register: final_config
+  environment:
+    KUBECONFIG: /root/.kube/config
+  ignore_errors: yes
+  when: deployment_check.rc == 0
+
+- name: Show final configuration
+  debug:
+    msg: |
+      Final hostAliases configuration:
+      {{ final_config.stdout if final_config.stdout != '' else 'No hostAliases found' }}
+  when: deployment_check.rc == 0 and final_config is defined
+
+- name: Check cattle-cluster-agent pods status
+  shell: kubectl get pods -n cattle-system -l app=cattle-cluster-agent
+  register: pods_status
+  environment:
+    KUBECONFIG: /root/.kube/config
+  when: deployment_check.rc == 0
+
+- name: Show pods status
+  debug:
+    msg: |
+      Cattle cluster agent pods:
+      {{ pods_status.stdout }}
+  when: deployment_check.rc == 0 and pods_status is defined
+
+- name: Show summary
+  debug:
+    msg: |
+      === KUBECTL SETUP SUMMARY ===
+      ✅ Kubectl configured: Yes
+      ✅ Kubeconfig copied: Yes
+      🔍 Cattle-system namespace: {{ 'Found' if namespace_check.rc == 0 else 'Not found' }}
+      🔍 Cattle-cluster-agent deployment: {{ 'Found' if deployment_check.rc == 0 else 'Not found' }}
+      🔧 DNS Fix applied: {{ 'Yes' if (deployment_check.rc == 0 and patch_result is defined and patch_result.rc == 0) else 'No' }}
+      
+      {% if deployment_check.rc != 0 %}
+      ⏳ The cattle-cluster-agent deployment doesn't exist yet.
+      This is normal - it will be created when nodes fully register with Rancher.
+      You can run this role again later to apply the DNS fix.
+      {% endif %}

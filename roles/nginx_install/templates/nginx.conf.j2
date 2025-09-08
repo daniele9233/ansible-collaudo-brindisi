@@ -1,0 +1,93 @@
+#load_module /usr/lib/nginx/modules/ngx_stream_module.so;
+user {{ nginx_user }};
+worker_processes {{ nginx_worker_processes }};
+worker_rlimit_nofile {{ nginx_worker_rlimit_nofile }};
+error_log /var/log/nginx/error.log;
+pid /run/nginx.pid;
+#include /etc/nginx/modules-enabled/*.conf;
+include /etc/nginx/conf.d/*.conf;
+
+events {
+    worker_connections 1024;
+    use epoll;
+    multi_accept on;
+}
+
+http {
+    client_max_body_size {{ nginx_client_max_body_size }};
+
+    upstream rancher_servers_https {
+{% for server in rancher_servers_https %}
+        server {{ server.server }} max_fails={{ server.max_fails }} fail_timeout={{ server.fail_timeout }};
+{% endfor %}
+    }
+
+
+    upstream rancher_ingress_https {
+{% for server in rancher_ingress_https %}
+        server {{ server.server }} max_fails={{ server.max_fails }} fail_timeout={{ server.fail_timeout }};
+{% endfor %}
+    }
+
+upstream rancher_ingress_https_1 {
+{% for server in rancher_ingress_https_1 %}
+    server {{ server.server }} max_fails={{ server.max_fails }} fail_timeout={{ server.fail_timeout }};
+{% endfor %}
+}
+
+
+    # Redirezione HTTP a HTTPS
+    server {
+        listen 80 default_server;
+        server_name _;
+        return 301 https://$host$request_uri;
+    }
+
+    # Blocco Rancher
+    server {
+        listen 443 ssl;
+        server_name {{ nginx_server_name }};
+        ssl_certificate {{ nginx_ssl_cert_path }};
+        ssl_certificate_key {{ nginx_ssl_key_path }};
+        ssl_protocols TLSv1.2 TLSv1.3;
+        ssl_ciphers HIGH:!aNULL:!MD5;
+
+        location / {
+            proxy_pass https://rancher_servers_https;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header X-Forwarded-Host $host;
+            proxy_set_header X-Forwarded-Port $server_port;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "Upgrade";
+            proxy_ssl_server_name on;
+        }
+    }
+
+    # Blocco Multi-Servizi
+    server {
+        listen 443 ssl;
+        server_name {% for name in multi_services_server_names %}{{ name }} {% endfor %};
+        ssl_certificate {{ multi_services_ssl_cert_path }};
+        ssl_certificate_key {{ multi_services_ssl_key_path }};
+        ssl_protocols TLSv1.2 TLSv1.3;
+        ssl_ciphers HIGH:!aNULL:!MD5;
+
+        location / {
+            proxy_pass https://rancher_ingress_https;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header X-Forwarded-Host $host;
+            proxy_set_header X-Forwarded-Port $server_port;
+            proxy_ssl_server_name on;
+        }
+    }
+}
+
+include /etc/nginx/conf-http.d/*.conf;
+

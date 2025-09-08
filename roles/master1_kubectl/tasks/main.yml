@@ -1,0 +1,19 @@
+---
+- name: Copy kubectl binary to /usr/local/bin/
+  copy:
+    remote_src: yes
+    src: /var/lib/rancher/rke2/bin/kubectl
+    dest: /usr/local/bin/kubectl
+    mode: 0755
+
+- name: Create /root/.kube directory
+  file:
+    path: /root/.kube
+    state: directory
+
+- name: Copy RKE2 kubeconfig to /root/.kube/config
+  copy:
+    remote_src: yes
+    src: /etc/rancher/rke2/rke2.yaml
+    dest: /root/.kube/config
+

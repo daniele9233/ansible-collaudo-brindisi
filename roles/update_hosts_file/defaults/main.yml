@@ -1,0 +1,4 @@
+# roles/update_hosts_file/defaults/main.yml
+---
+# Default domain - will be overridden by playbook vars
+rancher_domain: ""

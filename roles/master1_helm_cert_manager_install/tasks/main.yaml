@@ -1,0 +1,40 @@
+- name: Install Helm and kubectl
+  block:
+    - name: Download Helm
+      get_url:
+        url: "https://get.helm.sh/helm-{{ helm_version }}-linux-amd64.tar.gz"
+        dest: /tmp/helm.tar.gz
+
+    - name: Extract Helm
+      unarchive:
+        src: /tmp/helm.tar.gz
+        dest: /tmp
+        remote_src: true
+
+    - name: Move Helm to /usr/local/bin
+      command: mv /tmp/linux-amd64/helm /usr/local/bin/helm
+
+    - name: Copy kubectl binary to /usr/local/bin/
+      copy:
+        remote_src: yes
+        src: /var/lib/rancher/rke2/bin/kubectl
+        dest: /usr/local/bin/kubectl
+        mode: 0755
+
+    - name: Create /root/.kube directory
+      file:
+        path: /root/.kube
+        state: directory
+
+    - name: Copy RKE2 kubeconfig to /root/.kube/config
+      copy:
+        remote_src: yes
+        src: /etc/rancher/rke2/rke2.yaml
+        dest: /root/.kube/config
+
+#  when: inventory_hostname == {{ master_node_name }}
+
+- name: Install Helm and cert-manager on master1
+  #  when: inventory_hostname == {{ master_node_name }}
+  block:
+    - include_tasks: master1_helm_cert_manager_install.yml

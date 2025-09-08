@@ -1,0 +1,97 @@
+---
+- name: "Gather facts to access ansible_devices"
+  setup:
+    gather_subset: hardware
+  when: ansible_devices is not defined
+- name: "Get root device"
+  command: "findmnt -n -o SOURCE /"
+  register: root_device_raw
+- name: "Extract root block device name"
+  set_fact:
+    root_device: "{{ root_device_raw.stdout | regex_replace('^/dev/', '') | regex_replace('[0-9]+$', '') }}"
+- name: "Find usable disk with shell command"
+  shell: |
+    for device in $(lsblk -nd -o NAME | grep -E '^(sd|vd|nvme)'); do
+      # Skip root device
+      if [ "$device" = "{{ root_device }}" ]; then
+        continue
+      fi
+      # Check if device has no partitions
+      if [ $(lsblk -n /dev/$device | wc -l) -eq 1 ]; then
+        # Check if not mounted
+        if ! lsblk -n -o MOUNTPOINT /dev/$device | grep -q .; then
+          echo $device
+          break
+        fi
+      fi
+    done
+  register: usable_disk_result
+  changed_when: false
+- name: "Set usable disk"
+  set_fact:
+    selected_disk: "/dev/{{ usable_disk_result.stdout }}"
+  when: usable_disk_result.stdout != ""
+- name: "Skip LVM setup if no usable disk found"
+  debug:
+    msg: "No additional disk found, skipping LVM setup"
+  when: usable_disk_result.stdout == ""
+- name: "Show selected disk"
+  debug:
+    msg: "Selected disk: {{ selected_disk }}"
+  when: usable_disk_result.stdout != ""
+- name: "Partition disk with parted"
+  parted:
+    device: "{{ selected_disk }}"
+    number: 1
+    state: present
+    part_type: primary
+    fs_type: "ext4"
+    align: optimal
+  when: usable_disk_result.stdout != ""
+- name: "Set partition path"
+  set_fact:
+    rancher_partition: "{{ selected_disk }}1"
+  when: usable_disk_result.stdout != ""
+- name: "Create physical volume"
+  command: "pvcreate {{ rancher_partition }}"
+  args:
+    creates: "/etc/lvm/archive"
+  when: usable_disk_result.stdout != ""
+- name: "Create volume group"
+  command: "vgcreate {{ vg_name }} {{ rancher_partition }}"
+  args:
+    creates: "/dev/{{ vg_name }}"
+  when: usable_disk_result.stdout != ""
+- name: "Create logical volume"
+  command: "lvcreate -n {{ lv_name }} {{ vg_name }} -l 100%FREE"
+  args:
+    creates: "/dev/{{ vg_name }}/{{ lv_name }}"
+  when: usable_disk_result.stdout != ""
+- name: "Format logical volume as {{ filesystem_type }}"
+  filesystem:
+    fstype: "{{ filesystem_type }}"
+    dev: "/dev/{{ vg_name }}/{{ lv_name }}"
+  when: usable_disk_result.stdout != ""
+- name: "Ensure mount point {{ rancher_mount_point }} exists"
+  file:
+    path: "{{ rancher_mount_point }}"
+    state: directory
+    mode: "0755"
+- name: "Get UUID of logical volume"
+  command: "blkid -s UUID -o value /dev/{{ vg_name }}/{{ lv_name }}"
+  register: rancher_lv_uuid
+  when: usable_disk_result.stdout != ""
+- name: "Add mount to /etc/fstab"
+  lineinfile:
+    path: /etc/fstab
+    line: "UUID={{ rancher_lv_uuid.stdout }} {{ rancher_mount_point }} {{ filesystem_type }} {{ mount_options }} 0 0"
+    state: present
+  when: usable_disk_result.stdout != ""
+- name: "Mount volume"
+  mount:
+    path: "{{ rancher_mount_point }}"
+    src: "UUID={{ rancher_lv_uuid.stdout }}"
+    fstype: "{{ filesystem_type }}"
+    opts: "{{ mount_options }}"
+    state: mounted
+  when: usable_disk_result.stdout != ""

@@ -1,0 +1,14 @@
+---
+- name: Install RKE2 on master1
+  shell: curl -sfL https://get.rke2.io | sh -
+
+- name: Enable RKE2 server service
+  systemd:
+    name: rke2-server
+    enabled: yes
+
+- name: Start RKE2 server service
+  systemd:
+    name: rke2-server
+    state: started
+

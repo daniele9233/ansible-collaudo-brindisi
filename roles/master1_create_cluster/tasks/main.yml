@@ -1,0 +1,332 @@
+---
+- name: Wait for Rancher cluster to be fully ready
+  pause:
+    seconds: 280  # 3 minuti
+  delegate_to: "{{ ansibleSshHost }}"
+
+- name: Get Rancher API token
+  delegate_to: "{{ ansibleSshHost }}"
+  uri:
+    url: "https://{{ rancher_domain }}/v3-public/localProviders/local?action=login"
+    method: POST
+    body_format: json
+    validate_certs: no
+    body:
+      username: "admin"
+      password: "{{ rancher_password }}"
+    return_content: yes
+    status_code: [200, 201]
+  register: api_token_response
+
+- name: Set Rancher server URL (completa setup iniziale)
+  delegate_to: "{{ ansibleSshHost }}"
+  uri:
+    url: "https://{{ rancher_domain }}/v3/settings/server-url"
+    method: PUT
+    body_format: json
+    headers:
+      Authorization: "Bearer {{ api_token_response.json.token }}"
+      Content-Type: "application/json"
+    body:
+      name: server-url
+      value: "https://{{ rancher_domain }}"
+    status_code: 200
+    validate_certs: no
+
+- name: Accept Rancher EULA
+  delegate_to: "{{ ansibleSshHost }}"
+  uri:
+    url: "https://{{ rancher_domain }}/v3/setting/first-login"
+    method: POST
+    body_format: json
+    headers:
+      Authorization: "Bearer {{ api_token_response.json.token }}"
+      Content-Type: "application/json"
+    status_code: [200, 204, 409]
+    validate_certs: no
+  ignore_errors: yes
+
+- name: Create a new Kubernetes RKE2 custom cluster via Rancher API
+  delegate_to: "{{ ansibleSshHost }}"
+  uri:
+    url: "https://{{ rancher_domain }}/v1/provisioning.cattle.io.clusters"
+    method: POST
+    body_format: json
+    headers:
+      Authorization: "Bearer {{ api_token_response.json.token }}"
+      Content-Type: "application/json"
+    body:
+      type: "provisioning.cattle.io.cluster"
+      metadata:
+        name: "{{ cluster_name }}"
+        namespace: "fleet-default"
+      spec:
+        kubernetesVersion: "{{ cluster_k8s_version }}"
+        rkeConfig:
+          machineGlobalConfig:
+            cni: "{{ cluster_cni }}"
+            disable-kube-proxy: false
+            etcd-expose-metrics: false
+          machineSelectorConfig:
+            - config:
+                protect-kernel-defaults: false
+          registries: {}
+          upgradeStrategy:
+            controlPlaneConcurrency: "1"
+            controlPlaneDrainOptions:
+              enabled: false
+              force: false
+              ignoreDaemonSets: true
+              skipWaitForDeleteTimeout: 0
+              timeout: 120
+            workerConcurrency: "1"
+            workerDrainOptions:
+              enabled: false
+              force: false
+              ignoreDaemonSets: true
+              skipWaitForDeleteTimeout: 0
+              timeout: 120
+          etcd:
+            snapshotScheduleCron: "0 */5 * * *"
+            snapshotRetention: 5
+            disableSnapshots: false
+        defaultPodSecurityPolicyTemplateName: ""
+        defaultPodSecurityAdmissionConfigurationTemplateName: ""
+        defaultClusterRoleForProjectMembers: ""
+        enableNetworkPolicy: false
+        fleetWorkspaceName: "fleet-default"
+    status_code: 201
+    validate_certs: no
+  register: create_cluster_result
+
+- name: Show cluster creation result
+  debug:
+    var: create_cluster_result.json
+
+- name: Wait for cluster to be provisioned
+  delegate_to: "{{ ansibleSshHost }}"
+  uri:
+    url: "https://{{ rancher_domain }}/v1/provisioning.cattle.io.clusters/fleet-default/{{ cluster_name }}"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ api_token_response.json.token }}"
+      Content-Type: "application/json"
+    validate_certs: no
+  register: cluster_status
+  until: cluster_status.json.status is defined and cluster_status.json.status.conditions is defined
+  retries: 30
+  delay: 10
+  ignore_errors: yes
+
+- name: Get cluster ID from legacy API for registration token
+  delegate_to: "{{ ansibleSshHost }}"
+  uri:
+    url: "https://{{ rancher_domain }}/v3/clusters?name={{ cluster_name }}"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ api_token_response.json.token }}"
+      Content-Type: "application/json"
+    validate_certs: no
+  register: legacy_cluster_info
+  retries: 10
+  delay: 5
+
+- name: Debug cluster info
+  debug:
+    var: legacy_cluster_info.json
+
+- name: Get or create cluster registration token
+  delegate_to: "{{ ansibleSshHost }}"
+  uri:
+    url: "https://{{ rancher_domain }}/v3/clusterregistrationtokens"
+    method: POST
+    body_format: json
+    headers:
+      Authorization: "Bearer {{ api_token_response.json.token }}"
+      Content-Type: "application/json"
+    body:
+      type: "clusterRegistrationToken"
+      clusterId: "{{ legacy_cluster_info.json.data[0].id }}"
+    status_code: [201, 409]  # 409 se il token esiste già
+    validate_certs: no
+  register: registration_token_result
+  when: legacy_cluster_info.json.data | length > 0
+  ignore_errors: yes
+
+- name: Wait for registration token to be ready
+  delegate_to: "{{ ansibleSshHost }}"
+  uri:
+    url: "https://{{ rancher_domain }}/v3/clusterregistrationtokens?clusterId={{ legacy_cluster_info.json.data[0].id }}"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ api_token_response.json.token }}"
+      Content-Type: "application/json"
+    validate_certs: no
+  register: token_list
+  until: token_list.json.data | length > 0 and token_list.json.data[0].nodeCommand is defined and token_list.json.data[0].nodeCommand != ""
+  retries: 20
+  delay: 10
+
+- name: Show cluster status
+  debug:
+    msg: |
+      Cluster creato con successo!
+      Nome: {{ cluster_name }}
+      ID: {{ create_cluster_result.json.metadata.name }}
+      Namespace: {{ create_cluster_result.json.metadata.namespace }}
+      Kubernetes Version: {{ create_cluster_result.json.spec.kubernetesVersion }}
+
+- name: Debug registration token
+  debug:
+    var: token_list.json.data[0]
+
+- name: Extract registration details
+  set_fact:
+    rancher_host: "{{ rancher_domain | regex_replace('^https?://', '') }}"
+    node_command: "{{ token_list.json.data[0].nodeCommand }}"
+
+- name: Extract token from nodeCommand
+  set_fact:
+    cluster_token: "{{ node_command | regex_search('--token ([A-Za-z0-9:]+)', '\\1') | first }}"
+
+- name: Debug extracted values
+  debug:
+    msg: |
+      Rancher Host: {{ rancher_host }}
+      Cluster Token: {{ cluster_token }}
+      Node Command: {{ node_command }}
+
+- name: Install system-agent and join nodes as managers
+  shell: |
+    # Download and install system-agent for manager nodes
+    curl --insecure -fL https://{{ rancher_host }}/system-agent-install.sh | sh -s - \
+      --server https://{{ rancher_host }} \
+      --label 'cattle.io/os=linux' \
+      --token {{ cluster_token }} \
+      --etcd --controlplane
+  args:
+    executable: /bin/bash
+  async: 600
+  poll: 0
+  register: join_managers_async
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['new_managers'] }}"
+
+- name: Install system-agent and join nodes as workers
+  shell: |
+    # Download and install system-agent for worker nodes
+    curl --insecure -fL https://{{ rancher_host }}/system-agent-install.sh | sh -s - \
+      --server https://{{ rancher_host }} \
+      --label 'cattle.io/os=linux' \
+      --token {{ cluster_token }} \
+      --worker
+  args:
+    executable: /bin/bash
+  async: 600
+  poll: 0
+  register: join_workers_async
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['workers'] }}"
+
+- name: Install system-agent and join nodes as ingress
+  shell: |
+    # Download and install system-agent for ingress nodes
+    curl --insecure -fL https://{{ rancher_host }}/system-agent-install.sh | sh -s - \
+      --server https://{{ rancher_host }} \
+      --label 'cattle.io/os=linux' \
+      --label 'app=ingress' \
+      --token {{ cluster_token }} \
+      --worker \
+      --taints 'app=ingress:NoSchedule'
+  args:
+    executable: /bin/bash
+  async: 600
+  poll: 0
+  register: join_ingress_async
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['ingress'] }}"
+
+- name: Wait for manager nodes join to complete
+  async_status:
+    jid: "{{ item.ansible_job_id }}"
+  register: join_managers_status
+  until: join_managers_status.finished
+  retries: 60
+  delay: 10
+  delegate_to: "{{ item.item }}"
+  loop: "{{ join_managers_async.results }}"
+  ignore_errors: yes
+
+- name: Wait for worker nodes join to complete
+  async_status:
+    jid: "{{ item.ansible_job_id }}"
+  register: join_workers_status
+  until: join_workers_status.finished
+  retries: 120
+  delay: 20
+  delegate_to: "{{ item.item }}"
+  loop: "{{ join_workers_async.results }}"
+  ignore_errors: yes
+
+- name: Wait for ingress nodes join to complete
+  async_status:
+    jid: "{{ item.ansible_job_id }}"
+  register: join_ingress_status
+  until: join_ingress_status.finished
+  retries: 120
+  delay: 20
+  delegate_to: "{{ item.item }}"
+  loop: "{{ join_ingress_async.results }}"
+  ignore_errors: yes
+
+- name: Show manager nodes join results
+  debug:
+    msg: |
+      Manager Node: {{ item.item }}
+      Status: {{ 'Success' if item.rc == 0 else 'Failed' }}
+      Output: {{ item.stdout if item.stdout is defined else 'No output' }}
+      Error: {{ item.stderr if item.stderr is defined else 'No error' }}
+  loop: "{{ join_managers_status.results }}"
+
+- name: Show worker nodes join results
+  debug:
+    msg: |
+      Worker Node: {{ item.item }}
+      Status: {{ 'Success' if item.rc == 0 else 'Failed' }}
+      Output: {{ item.stdout if item.stdout is defined else 'No output' }}
+      Error: {{ item.stderr if item.stderr is defined else 'No error' }}
+  loop: "{{ join_workers_status.results }}"
+
+- name: Show ingress nodes join results
+  debug:
+    msg: |
+      Ingress Node: {{ item.item }}
+      Status: {{ 'Success' if item.rc == 0 else 'Failed' }}
+      Output: {{ item.stdout if item.stdout is defined else 'No output' }}
+      Error: {{ item.stderr if item.stderr is defined else 'No error' }}
+  loop: "{{ join_ingress_status.results }}"
+
+- name: Verify nodes are registered in Rancher
+  delegate_to: "{{ ansibleSshHost }}"
+  uri:
+    url: "https://{{ rancher_domain }}/v3/nodes?clusterId={{ legacy_cluster_info.json.data[0].id }}"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ api_token_response.json.token }}"
+      Content-Type: "application/json"
+    validate_certs: no
+  register: cluster_nodes
+  retries: 10
+  delay: 15
+
+- name: Show registered nodes
+  debug:
+    msg: |
+      Nodes registered in cluster:
+      {% for node in cluster_nodes.json.data %}
+      - Name: {{ node.nodeName if node.nodeName is defined else 'Unknown' }}
+        IP: {{ node.ipAddress if node.ipAddress is defined else 'Unknown' }}
+        Roles: {{ node.controlPlane | ternary('controlplane', '') }}{{ node.etcd | ternary(' etcd', '') }}{{ node.worker | ternary(' worker', '') }}
+        State: {{ node.state if node.state is defined else 'Unknown' }}
+        Labels: {{ node.labels if node.labels is defined else 'None' }}
+      {% endfor %}
