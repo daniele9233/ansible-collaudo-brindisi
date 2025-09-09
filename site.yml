@@ -6,7 +6,6 @@
   roles:
     - role: create_disk
 
-
 # SECONDO PLAY: Aggiorna /etc/hosts su tutti i server
 - hosts: all,local
   become: yes

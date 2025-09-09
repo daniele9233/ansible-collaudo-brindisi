@@ -2,7 +2,11 @@
 # Variabili comuni per tutti gli host
 
 # Dominio e credenziali
+<<<<<<< HEAD
 rancher_domain: "rancher.asl.brindisi.it"
+=======
+rancher_domain: "rancher-coll.asl.brindisi.it"
+>>>>>>> 03137525df9864eece1ccaf6d8c60bd31bfa64dc
 rancher_password: "BRINDISICOLL.2025"
 
 # Versioni software
