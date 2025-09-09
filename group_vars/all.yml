@@ -2,7 +2,7 @@
 # Variabili comuni per tutti gli host
 
 # Dominio e credenziali
-rancher_domain: "*rancher-coll.asl.brindisi.it"
+rancher_domain: "rancher.asl.brindisi.it"
 rancher_password: "BRINDISICOLL.2025"
 
 # Versioni software
@@ -29,14 +29,14 @@ cluster_cni: "canal"
 ansibleSshHost: "localhost"
 
 # Master node configuration (per kubectl setup sui new_managers)
-master_node_ip: "10.109.10.66"
+master_node_ip: "10.116.82.131"
 master_node_user: "root"
 # master_node_name usa rancher_domain (evita duplicazioni)
 # NFS VARS ####
 
 
 # Variabili blocco Rancher
-nginx_server_name: "rancher-coll.asl.brindisi.it"
+nginx_server_name: "rancher.asl.brindisi.it"
 nginx_ssl_cert_path: "/etc/nginx/cert/fullchain.pem"
 nginx_ssl_key_path: "/etc/nginx/cert/privkey.pem"
 
@@ -53,18 +53,18 @@ multi_services_ssl_key_path: "/etc/nginx/cert/privkey.pem"
 
 # Upstream servers
 rancher_servers_https:
-  - server: "10.109.10.66:443"
+  - server: "10.116.82.131:443"
     max_fails: 3
     fail_timeout: "5s"
 
 
 rancher_ingress_https:
-  - server: "10.109.10.68:443"
+  - server: "10.116.82.140:443"
     max_fails: 3
     fail_timeout: "5s"
 
 rancher_ingress_https_1:
-  - server: "10.109.10.69:443"
+  - server: "10.116.82.141:443"
     max_fails: 3
     fail_timeout: "5s"
 
