@@ -2,8 +2,8 @@
 # Variabili comuni per tutti gli host
 
 # Dominio e credenziali
-rancher_domain: "rancher-coll.asl.brindisi.it"
-rancher_password: "BRINDISICOLL.2025"
+rancher_domain: "kikko.app.inail-svil.almaviva.it"
+rancher_password: "kikkoapp.2025"
 
 # Versioni software
 # ---------------------------------------------------------------------------
@@ -65,42 +65,40 @@ cluster_cni: "canal"
 ansibleSshHost: "localhost"
 
 # Master node configuration (per kubectl setup sui new_managers)
-master_node_ip: "10.109.10.66"
+master_node_ip: "10.205.166.214"
 master_node_user: "root"
 # master_node_name usa rancher_domain (evita duplicazioni)
 # NFS VARS ####
 
 
 # Variabili blocco Rancher
-nginx_server_name: "rancher-coll.asl.brindisi.it"
+nginx_server_name: "kikko.app.inail-svil.almaviva.it"
 nginx_ssl_cert_path: "/etc/nginx/cert/fullchain.pem"
 nginx_ssl_key_path: "/etc/nginx/cert/privkey.pem"
 
 # Variabili blocco Multi-Servizi
 multi_services_server_names:
-  - "kibana-coll.asl.brindisi.it"
-  - "grafana-coll.asl.brindisi.it"
-  - "harbor-coll.asl.brindisi.it"
-  - "pgadmin-coll.asl.brindisi.it"
-  - "kafkaui-coll.asl.brindisi.it"
+  - "kibana.app.inail-svil.almaviva.it"
+  - "grafana.app.inail-svil.almaviva.it"
+  - "pgadmin.app.inail-svil.almaviva.it"
 
 multi_services_ssl_cert_path: "/etc/nginx/cert/fullchain.pem"
 multi_services_ssl_key_path: "/etc/nginx/cert/privkey.pem"
 
 # Upstream servers
 rancher_servers_https:
-  - server: "10.109.10.66:443"
+  - server: "10.205.166.214:443"
     max_fails: 3
     fail_timeout: "5s"
 
 
 rancher_ingress_https:
-  - server: "10.109.10.68:443"
+  - server: "10.205.166.219:443"
     max_fails: 3
     fail_timeout: "5s"
 
 rancher_ingress_https_1:
-  - server: "10.109.10.69:443"
+  - server: "10.205.166.220:443"
     max_fails: 3
     fail_timeout: "5s"
 
