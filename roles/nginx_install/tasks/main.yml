@@ -39,6 +39,9 @@
     group: root
     mode: '0600'
   notify: restart nginx
+  # Evita che la chiave privata finisca in chiaro in ansible.log:
+  # ansible.cfg abilita [diff] always = True.
+  no_log: true
 
 - name: Create Nginx conf.d directory
   file:

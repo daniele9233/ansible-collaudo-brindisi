@@ -1,0 +1,15 @@
+---
+# Collection richieste dai ruoli di questo repository.
+#
+# Installazione:
+#   ansible-galaxy collection install -r collections/requirements.yml
+#
+# Necessarie se e' installato solo "ansible-core" (pip install ansible-core).
+# Il pacchetto completo "ansible" le include gia'.
+collections:
+  # community.general.parted / lvg / lvol / filesystem  -> roles/create_disk
+  - name: community.general
+    version: ">=8.0.0"
+  # ansible.posix.mount                                 -> roles/create_disk
+  - name: ansible.posix
+    version: ">=1.5.0"

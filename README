@@ -1,4 +1,4 @@
-ANSIBLE TESTATO ED ESEGUITO SU 
+ANSIBLE TESTATO ED ESEGUITO SU
 
 ansible [core 2.18.8]
 python version = 3.12.3 (main, Aug 14 2025, 17:47:21) [GCC 13.3.0] (/usr/bin/python3)
@@ -6,32 +6,116 @@ jinja version = 3.1.2
 VERSION="24.04.3 LTS (Noble Numbat)"
 
 
-Step1:  Eseguire questi comandi per capire quali versione di rancher è compatibile con rke2 cosi da poter popolare le variabili
+===========================================================================
+STEP 0 - COLLECTION RICHIESTE
+===========================================================================
+
+I ruoli usano community.general (parted, lvg, lvol, filesystem) e
+ansible.posix (mount). Se e' installato solo "ansible-core":
+
+    ansible-galaxy collection install -r collections/requirements.yml
+
+Con il pacchetto completo "ansible" sono gia' incluse.
 
 
-Ultime versioni di rancher stabili 
+===========================================================================
+STEP 1 - VERIFICA DELLE VERSIONI (matrice di compatibilita')
+===========================================================================
 
-curl -s https://api.github.com/repos/rancher/rancher/releases | jq -r '.[] | select(.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+$")) | .tag_name' | head -5
+Le versioni sono pinnate in group_vars/all.yml:
+
+    rancher_version      2.14.3            (canale rancher-stable)
+    rke2_version         v1.34.9+rke2r1    (cluster locale che ospita Rancher)
+    cluster_k8s_version  v1.34.9+rke2r1    (cluster downstream creati da Rancher)
+
+Rancher 2.14.x supporta Kubernetes 1.33 / 1.34 / 1.35.
+
+Per validarle automaticamente contro rancher-stable e il channel server RKE2:
+
+    ansible-playbook -i inventory.ini check_versions.yml
+
+Il playbook fallisce se rancher_version non esiste su rancher-stable o se le
+versioni Kubernetes sono fuori matrice, e segnala se e' uscita una patch
+stable piu' recente.
+
+Controlli manuali equivalenti:
+
+    # versioni realmente presenti sul canale STABLE (non su GitHub)
+    curl -s https://releases.rancher.com/server-charts/stable/index.yaml \
+      | grep -E '^\s+version:' | head -10
+
+    # release corrente dei canali RKE2
+    curl -s https://update.rke2.io/v1-release/channels | jq -r '.data[] | "\(.id) -> \(.latest)"'
+
+ATTENZIONE: le release su github.com/rancher/rancher includono anche versioni
+presenti solo sul canale "rancher-latest", da non usare in collaudo.
 
 
-Ultime versioni di kubernetes 
+===========================================================================
+STEP 2 - CERTIFICATI
+===========================================================================
 
-curl -s https://api.github.com/repos/rancher/rke2/releases | jq -r '.[].tag_name' | grep -v rc | head -10
+Inserire i certificati nelle directory:
 
+    files/
+    roles/master1_helm_cert_manager_install/files/
 
-Inserire i certificati all'interno della dir
+    cacerts.pem     <- SOLO la CA che ha firmato il certificato
+    fullchain.pem   <- certificato del server + intermedi
+    privkey.pem     <- chiave privata
 
-/roles/master1_helm_cert_manager_install/files
+cacerts.pem e fullchain.pem NON devono essere lo stesso file: con
+--set privateCA=true Rancher usa cacerts.pem per distribuire la CA agli agent.
 
-
-cacerts.pem
-fullchain.pem
-privkey.pem
-
-
-PRODECURA DI INSTALLAZIONE 
-
-ansible-playbook -i inventory.ini site.yml
-
+Le chiavi private non vanno committate nel repository.
 
 
+===========================================================================
+STEP 3 - VERIFICA DEI DISCHI (dry-run, nessuna modifica ai server)
+===========================================================================
+
+Prima di eseguire l'installazione, controllare su quale disco lavorerebbe il
+ruolo create_disk:
+
+    ansible-playbook -i inventory.ini check_disk.yml
+
+Per un singolo host:
+
+    ansible-playbook -i inventory.ini check_disk.yml --limit k8sworker01c
+
+Output di esempio:
+
+    ================ k8sworker01c (10.109.10.70) ================
+    Dischi rilevati:
+      /dev/sda   64.0 GiB    ->   IN USO: mount attivi (/boot/efi, /)
+      /dev/sdb   100.0 GiB   ->   LIBERO
+    DISCO SELEZIONATO -> /dev/sdb
+    Verranno creati: partizione /dev/sdb1, VG vg_rancher, LV lv_rancher, ...
+    *** MODALITA' VERIFICA ATTIVA: nessuna modifica viene applicata al server. ***
+
+Il playbook esegue solo lsblk e stat: non tocca partizioni, LVM, filesystem
+o /etc/fstab.
+
+Un disco viene considerato LIBERO solo se il disco stesso, le sue partizioni
+e gli eventuali volumi logici sottostanti non hanno alcun mount attivo e
+alcuna firma di filesystem o LVM. Un disco che contiene dati non montati
+(es. un vecchio PV LVM) viene quindi SCARTATO, non riformattato.
+
+Per forzare un disco specifico, in group_vars/all.yml o in inventory.ini:
+
+    rancher_disk_device: "/dev/sdb"
+
+Anche in questo caso il device viene validato: se non risulta libero il
+playbook si ferma con errore invece di procedere.
+
+Altre modalita' di verifica:
+
+    ansible-playbook -i inventory.ini site.yml -e create_disk_check_only=true
+    ansible-playbook -i inventory.ini site.yml --check
+
+
+===========================================================================
+STEP 4 - PROCEDURA DI INSTALLAZIONE
+===========================================================================
+
+    ansible-playbook -i inventory.ini site.yml

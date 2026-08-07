@@ -1,0 +1,153 @@
+---
+# roles/create_disk/tasks/detect.yml
+#
+# Rilevamento del disco dati. Questo file NON modifica nulla sul server:
+# esegue solo comandi di lettura (lsblk / stat). Puo' quindi essere eseguito
+# in sicurezza anche in produzione per capire su quale disco si andrebbe a
+# lavorare.
+
+- name: "Verifica se il volume logico {{ vg_name }}/{{ lv_name }} esiste gia'"
+  ansible.builtin.stat:
+    path: "/dev/{{ vg_name }}/{{ lv_name }}"
+  register: create_disk_existing_lv
+  changed_when: false
+  check_mode: false
+
+- name: "Leggi la topologia dei dischi (lsblk, sola lettura)"
+  ansible.builtin.command:
+    argv:
+      - lsblk
+      - --json
+      - --bytes
+      - --output
+      - NAME,TYPE,SIZE,FSTYPE,MOUNTPOINT,RM,RO
+  register: create_disk_lsblk_raw
+  changed_when: false
+  check_mode: false
+
+- name: "Appiattisci l'albero di ogni disco (disco + partizioni + volumi logici)"
+  ansible.builtin.set_fact:
+    create_disk_scan: "{{ create_disk_scan | default([]) + [item | combine({'nodes': _nodes})] }}"
+  vars:
+    _level1: "{{ item.children | default([]) }}"
+    _level2: "{{ _level1 | map(attribute='children', default=[]) | flatten }}"
+    _level3: "{{ _level2 | map(attribute='children', default=[]) | flatten }}"
+    _nodes: "{{ [item] + _level1 + _level2 + _level3 }}"
+  loop: >-
+    {{ (create_disk_lsblk_raw.stdout | from_json).blockdevices
+       | selectattr('type', 'equalto', 'disk') | list }}
+  loop_control:
+    label: "{{ item.name }}"
+
+# Un disco e' considerato LIBERO solo se l'intero suo albero (il disco stesso,
+# le sue partizioni e gli eventuali volumi logici sottostanti) non presenta
+# alcun mount attivo e alcuna firma di filesystem/LVM.
+# Questo controllo copre automaticamente anche il disco di root, qualunque sia
+# il suo nome (sda, nvme0n1, /dev/mapper/...), senza doverlo identificare.
+- name: "Classifica ogni disco come LIBERO o SCARTATO"
+  ansible.builtin.set_fact:
+    create_disk_report: "{{ create_disk_report | default([]) + [_entry] }}"
+  vars:
+    _mounts: >-
+      {{ item.nodes | map(attribute='mountpoint', default=None)
+         | select('string') | reject('equalto', '') | list }}
+    _fstypes: >-
+      {{ item.nodes | map(attribute='fstype', default=None)
+         | select('string') | reject('equalto', '') | list }}
+    _partitions: "{{ item.children | default([]) | length }}"
+    _removable: "{{ item.rm | default(false) | bool }}"
+    _readonly: "{{ item.ro | default(false) | bool }}"
+    _supported: "{{ item.name is match('^(' ~ (create_disk_allowed_prefixes | join('|')) ~ ')') }}"
+    _too_small: "{{ (item.size | int) < (create_disk_min_size_bytes | int) }}"
+    _reason: >-
+      {{ 'IN USO: mount attivi (' ~ (_mounts | join(', ')) ~ ')' if (_mounts | length) > 0
+         else 'IN USO: firme filesystem/LVM (' ~ (_fstypes | unique | join(', ')) ~ ')' if (_fstypes | length) > 0
+         else 'IN USO: contiene ' ~ _partitions ~ ' partizione/i' if (_partitions | int) > 0
+         else 'SCARTATO: dispositivo rimovibile' if (_removable | bool)
+         else 'SCARTATO: dispositivo in sola lettura' if (_readonly | bool)
+         else 'SCARTATO: troppo piccolo' if (_too_small | bool)
+         else 'SCARTATO: tipo di device non gestito' if not (_supported | bool)
+         else 'LIBERO' }}
+    _entry:
+      name: "/dev/{{ item.name }}"
+      size_gib: "{{ ((item.size | int) / 1073741824) | round(1) }}"
+      reason: "{{ _reason | trim }}"
+  loop: "{{ create_disk_scan | default([]) }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: "Elenca i dischi liberi"
+  ansible.builtin.set_fact:
+    create_disk_candidates: >-
+      {{ create_disk_report | default([]) | selectattr('reason', 'equalto', 'LIBERO')
+         | map(attribute='name') | list }}
+
+# Se l'operatore ha indicato esplicitamente un device lo si usa, ma solo dopo
+# aver verificato che risulti libero: un errore di battitura non deve poter
+# distruggere il disco di sistema.
+- name: "Verifica che il device indicato in rancher_disk_device esista"
+  ansible.builtin.fail:
+    msg: >-
+      Il device richiesto '{{ rancher_disk_device }}' non e' presente su
+      {{ inventory_hostname }}. Dischi rilevati:
+      {{ create_disk_report | default([]) | map(attribute='name') | join(', ') }}
+  when:
+    - rancher_disk_device | length > 0
+    - rancher_disk_device not in (create_disk_report | default([]) | map(attribute='name') | list)
+
+- name: "Verifica che il device indicato in rancher_disk_device sia libero"
+  ansible.builtin.fail:
+    msg: >-
+      Il device richiesto '{{ rancher_disk_device }}' NON e' libero su
+      {{ inventory_hostname }}:
+      {{ (create_disk_report | selectattr('name', 'equalto', rancher_disk_device) | first).reason }}.
+      Interrompo per non danneggiare il server.
+  when:
+    - rancher_disk_device | length > 0
+    - rancher_disk_device not in create_disk_candidates
+    - not create_disk_existing_lv.stat.exists
+
+- name: "Seleziona il disco da utilizzare"
+  ansible.builtin.set_fact:
+    selected_disk: >-
+      {{ rancher_disk_device if rancher_disk_device | length > 0
+         else (create_disk_candidates | first) }}
+  when: (rancher_disk_device | length > 0) or (create_disk_candidates | length > 0)
+
+# Sui device il cui nome termina con una cifra (nvme0n1, mmcblk0, loop0) il
+# kernel inserisce una "p" prima del numero di partizione: nvme0n1p1.
+# Sugli altri (sda, vdb) il suffisso e' semplicemente il numero: sda1.
+- name: "Calcola il percorso della partizione dati"
+  ansible.builtin.set_fact:
+    rancher_partition: "{{ selected_disk }}{{ 'p1' if selected_disk[-1] is match('[0-9]') else '1' }}"
+  when: selected_disk is defined
+
+- name: "Componi le righe del riepilogo"
+  ansible.builtin.set_fact:
+    create_disk_lines: >-
+      {{ create_disk_lines | default([])
+         + ['  ' ~ item.name ~ '   ' ~ item.size_gib ~ ' GiB   ->   ' ~ item.reason] }}
+  loop: "{{ create_disk_report | default([]) }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: "Riepilogo dischi rilevati"
+  ansible.builtin.debug:
+    msg: "{{ _header + (create_disk_lines | default([])) + _footer }}"
+  vars:
+    _header:
+      - "================ {{ inventory_hostname }} ({{ ansible_host | default('locale') }}) ================"
+      - "Dischi rilevati:"
+    _selected:
+      - "DISCO SELEZIONATO -> {{ selected_disk | default('') }}"
+      - "Verranno creati: partizione {{ rancher_partition | default('') }}, VG {{ vg_name }}, LV {{ lv_name }}, filesystem {{ filesystem_type }} montato su {{ rancher_mount_point }}"
+    _none:
+      - "NESSUN DISCO LIBERO TROVATO -> il setup LVM viene saltato su questo host."
+    _already:
+      - "LVM GIA' PRESENTE: /dev/{{ vg_name }}/{{ lv_name }} esiste, nessuna modifica necessaria."
+    _dryrun:
+      - "*** MODALITA' VERIFICA ATTIVA: nessuna modifica viene applicata al server. ***"
+    _footer: >-
+      {{ (_already if create_disk_existing_lv.stat.exists
+          else (_selected if selected_disk is defined else _none))
+         + (_dryrun if (create_disk_check_only | bool) or ansible_check_mode else []) }}

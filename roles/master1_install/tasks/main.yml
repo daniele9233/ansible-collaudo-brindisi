@@ -1,14 +1,28 @@
 ---
-- name: Install RKE2 on master1
-  shell: curl -sfL https://get.rke2.io | sh -
+# Installazione RKE2 sul nodo che ospita Rancher (cluster locale).
+# La versione e' pinnata: senza INSTALL_RKE2_VERSION lo script get.rke2.io
+# installa sempre l'ultima release disponibile, che puo' trovarsi fuori dalla
+# matrice di compatibilita' di rancher_version.
+
+- name: Verifica se RKE2 e' gia' installato
+  ansible.builtin.command: /usr/local/bin/rke2 --version
+  register: rke2_installed
+  changed_when: false
+  failed_when: false
+
+- name: Install RKE2 on master1 ({{ rke2_version }})
+  ansible.builtin.shell:
+    cmd: curl -sfL https://get.rke2.io | INSTALL_RKE2_VERSION='{{ rke2_version }}' sh -
+  args:
+    executable: /bin/bash
+  when: rke2_version not in (rke2_installed.stdout | default(''))
 
 - name: Enable RKE2 server service
-  systemd:
+  ansible.builtin.systemd:
     name: rke2-server
-    enabled: yes
+    enabled: true
 
 - name: Start RKE2 server service
-  systemd:
+  ansible.builtin.systemd:
     name: rke2-server
     state: started
-

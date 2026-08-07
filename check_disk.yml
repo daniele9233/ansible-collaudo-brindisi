@@ -1,0 +1,56 @@
+---
+# check_disk.yml - VERIFICA A SECCO DEL RUOLO create_disk
+#
+# Mostra, per ogni nodo del cluster, su quale disco lavorerebbe il ruolo
+# create_disk. NON esegue alcuna modifica: solo comandi di lettura
+# (lsblk, stat). Puo' essere eseguito in sicurezza in qualsiasi momento.
+#
+# USO
+#   ansible-playbook -i inventory.ini check_disk.yml
+#
+#   # su un solo host
+#   ansible-playbook -i inventory.ini check_disk.yml --limit k8sworker01c
+#
+#   # simulando la scelta forzata di un disco
+#   ansible-playbook -i inventory.ini check_disk.yml -e rancher_disk_device=/dev/sdb
+#
+# Quando il risultato e' quello atteso, l'esecuzione reale e':
+#   ansible-playbook -i inventory.ini site.yml
+
+- name: "VERIFICA dischi (dry-run, nessuna modifica al server)"
+  hosts: masters:new_managers:workers:ingress
+  become: true
+  gather_facts: true
+  vars:
+    create_disk_check_only: true
+  roles:
+    - role: create_disk
+
+- name: "Riepilogo finale"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    _targets: >-
+      {{ (groups['masters'] | default([])) + (groups['new_managers'] | default([]))
+         + (groups['workers'] | default([])) + (groups['ingress'] | default([])) }}
+  tasks:
+    - name: "Tabella riepilogativa host -> disco selezionato"
+      ansible.builtin.debug:
+        msg: >-
+          {{ '%-16s' | format(item) }} ->
+          {{ hostvars[item]['selected_disk']
+             | default('NESSUN DISCO LIBERO TROVATO' if hostvars[item]['create_disk_report'] is defined
+                       else 'host non analizzato (escluso da --limit o irraggiungibile)') }}
+      loop: "{{ _targets }}"
+      loop_control:
+        label: "{{ item }}"
+
+    - name: "Come procedere"
+      ansible.builtin.debug:
+        msg:
+          - "Nessuna modifica e' stata applicata ai server."
+          - "Se i dischi sopra sono quelli attesi, esegui l'installazione reale con:"
+          - "  ansible-playbook -i inventory.ini site.yml"
+          - "Per forzare un disco specifico imposta rancher_disk_device in group_vars/all.yml"
+          - "oppure per singolo host in inventory.ini (es. rancher_disk_device=/dev/sdb)."

@@ -6,8 +6,27 @@ rancher_domain: "rancher-coll.asl.brindisi.it"
 rancher_password: "BRINDISICOLL.2025"
 
 # Versioni software
+# ---------------------------------------------------------------------------
+# MATRICE DI COMPATIBILITA' (verificata ad agosto 2026)
+#
+#   Rancher 2.14.3  ->  Kubernetes 1.33 / 1.34 / 1.35  (RKE2, K3s, EKS, AKS, GKE)
+#
+# rancher_version deve essere presente nel repo Helm "rancher-stable"
+# (https://releases.rancher.com/server-charts/stable). 2.14.3 e' l'ultima
+# release pubblicata su quel canale; 2.15.x esce prima su "rancher-latest"
+# e non va usata in collaudo/produzione finche' non passa su stable.
+#
+# Le versioni pinnate qui sotto si validano a runtime con:
+#   ansible-playbook -i inventory.ini check_versions.yml
+# ---------------------------------------------------------------------------
 helm_version: "v3.11.0"
-rancher_version: "2.11.2"
+rancher_version: "2.14.3"
+
+# Versione RKE2 del cluster LOCALE che ospita Rancher (nodo masters).
+# Va tenuta dentro la finestra supportata da rancher_version: senza questo pin
+# lo script get.rke2.io installa sempre l'ultima release disponibile, che puo'
+# uscire dalla matrice di compatibilita' (es. 1.36) e rompere Rancher.
+rke2_version: "v1.34.9+rke2r1"
 
 # Configurazione disco
 vg_name: "vg_rancher"
@@ -15,6 +34,12 @@ lv_name: "lv_rancher"
 rancher_mount_point: "/var/lib/rancher"
 filesystem_type: "xfs"
 mount_options: "defaults,noatime"
+
+# Disco dati: lasciare vuoto per la selezione automatica (viene scelto solo un
+# disco privo di partizioni, filesystem, firme LVM e mount attivi).
+# Per forzare un device specifico: rancher_disk_device: "/dev/sdb"
+# Verifica sempre prima con: ansible-playbook -i inventory.ini check_disk.yml
+rancher_disk_device: ""
 
 # Certificati
 fullchain_pem_file: "fullchain.pem"
@@ -24,7 +49,9 @@ remote_cert_path: "/root"
 
 # Cluster configuration
 cluster_name: "brindisicoll"
-cluster_k8s_version: "v1.31.11+rke2r1"
+# Versione Kubernetes dei cluster downstream creati via API Rancher.
+# Deve rientrare nella finestra supportata da rancher_version (vedi sopra).
+cluster_k8s_version: "v1.34.9+rke2r1"
 cluster_cni: "canal"
 ansibleSshHost: "localhost"
 

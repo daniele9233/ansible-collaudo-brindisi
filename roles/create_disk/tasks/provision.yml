@@ -1,0 +1,84 @@
+---
+# roles/create_disk/tasks/provision.yml
+#
+# Operazioni DISTRUTTIVE sul disco selezionato.
+# Viene incluso solo se detect.yml ha individuato un disco libero e se la
+# modalita' di sola verifica non e' attiva.
+
+# Ultimo controllo prima di scrivere: rileggo lo stato del device scelto.
+# Se nel frattempo risulta montato o con firme di filesystem mi fermo.
+- name: "Controllo di sicurezza finale sul device {{ selected_disk }}"
+  ansible.builtin.command:
+    argv:
+      - lsblk
+      - --noheadings
+      - --output
+      - FSTYPE,MOUNTPOINT
+      - "{{ selected_disk }}"
+  register: create_disk_final_check
+  changed_when: false
+  check_mode: false
+
+- name: "Interrompi se {{ selected_disk }} non e' piu' vuoto"
+  ansible.builtin.fail:
+    msg: >-
+      Il device {{ selected_disk }} risulta occupato (filesystem o mount
+      presenti). Interrompo per non danneggiare {{ inventory_hostname }}.
+      Output lsblk: {{ create_disk_final_check.stdout_lines | join(' / ') }}
+  when: create_disk_final_check.stdout | trim | length > 0
+
+- name: "Crea la partizione LVM su {{ selected_disk }}"
+  community.general.parted:
+    device: "{{ selected_disk }}"
+    number: 1
+    state: present
+    part_type: primary
+    label: gpt
+    flags: [lvm]
+    align: optimal
+
+- name: "Attendi che il device della partizione sia disponibile"
+  ansible.builtin.wait_for:
+    path: "{{ rancher_partition }}"
+    state: present
+    timeout: 30
+
+- name: "Crea il volume group {{ vg_name }} (crea anche il physical volume)"
+  community.general.lvg:
+    vg: "{{ vg_name }}"
+    pvs: "{{ rancher_partition }}"
+    state: present
+
+- name: "Crea il volume logico {{ lv_name }}"
+  community.general.lvol:
+    vg: "{{ vg_name }}"
+    lv: "{{ lv_name }}"
+    size: 100%FREE
+    state: present
+
+- name: "Formatta il volume logico come {{ filesystem_type }}"
+  community.general.filesystem:
+    fstype: "{{ filesystem_type }}"
+    dev: "/dev/{{ vg_name }}/{{ lv_name }}"
+
+- name: "Leggi lo UUID del volume logico"
+  ansible.builtin.command:
+    argv:
+      - blkid
+      - -s
+      - UUID
+      - -o
+      - value
+      - "/dev/{{ vg_name }}/{{ lv_name }}"
+  register: rancher_lv_uuid
+  changed_when: false
+
+# Il modulo mount gestisce sia il mount sia la riga in /etc/fstab: la vecchia
+# lineinfile aggiuntiva creava una seconda riga duplicata ed e' stata rimossa.
+- name: "Monta {{ rancher_mount_point }} e registra la voce in /etc/fstab"
+  ansible.posix.mount:
+    path: "{{ rancher_mount_point }}"
+    src: "UUID={{ rancher_lv_uuid.stdout | trim }}"
+    fstype: "{{ filesystem_type }}"
+    opts: "{{ mount_options }}"
+    state: mounted

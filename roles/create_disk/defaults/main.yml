@@ -1,0 +1,33 @@
+---
+# roles/create_disk/defaults/main.yml
+
+# MODALITA' DI SOLA VERIFICA (DRY-RUN).
+# Se true il ruolo si ferma dopo aver stampato il disco che verrebbe usato,
+# senza toccare partizioni, LVM, filesystem o /etc/fstab.
+#   ansible-playbook -i inventory.ini check_disk.yml
+#   ansible-playbook -i inventory.ini site.yml -e create_disk_check_only=true
+create_disk_check_only: false
+
+# Device da usare esplicitamente, es. "/dev/sdb".
+# Se vuoto il ruolo lo sceglie automaticamente fra i dischi liberi.
+# Anche quando e' impostato il device viene comunque validato: se risulta
+# in uso (partizioni, filesystem, mount) il ruolo si ferma con errore.
+rancher_disk_device: ""
+
+# Dimensione minima perche' un disco sia considerato utilizzabile (byte).
+# 10 GiB di default: evita di selezionare per errore dischi di servizio.
+create_disk_min_size_bytes: 10737418240
+
+# Prefissi di device considerati validi come disco dati.
+create_disk_allowed_prefixes:
+  - sd
+  - vd
+  - nvme
+  - xvd
+
+# Impostazioni LVM / filesystem (sovrascrivibili da group_vars/all.yml)
+vg_name: "vg_rancher"
+lv_name: "lv_rancher"
+rancher_mount_point: "/var/lib/rancher"
+filesystem_type: "xfs"
+mount_options: "defaults,noatime"

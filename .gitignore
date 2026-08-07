@@ -1,0 +1,19 @@
+# Log di esecuzione: con "[diff] always = True" in ansible.cfg contengono il
+# contenuto integrale dei file copiati, chiavi private TLS comprese.
+ansible.log
+*.retry
+
+# Certificati e chiavi: NON devono finire nel repository.
+# Vanno copiati a mano prima dell'esecuzione in:
+#   files/
+#   roles/master1_helm_cert_manager_install/files/
+#
+# NOTA: i .pem attualmente presenti sono gia' tracciati da git, quindi queste
+# righe non li escludono da sole. Dopo aver ruotato il certificato eseguire:
+#   git rm --cached files/*.pem roles/master1_helm_cert_manager_install/files/*.pem
+# in modo che la nuova chiave privata resti solo in locale.
+files/*.pem
+roles/master1_helm_cert_manager_install/files/*.pem
+
+# Collection scaricate localmente
+collections/ansible_collections/

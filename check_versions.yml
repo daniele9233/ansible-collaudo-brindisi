@@ -1,0 +1,116 @@
+---
+# check_versions.yml - VALIDAZIONE DELLE VERSIONI PINNATE
+#
+# Verifica che rancher_version esista davvero sul canale "rancher-stable" e
+# che cluster_k8s_version / rke2_version rientrino nella matrice di
+# compatibilita' dichiarata. Mostra inoltre le versioni piu' recenti
+# disponibili, cosi' da decidere consapevolmente un eventuale aggiornamento.
+#
+# Gira solo sul controller, non tocca i server:
+#   ansible-playbook -i inventory.ini check_versions.yml
+#
+# Richiede accesso HTTPS a releases.rancher.com e update.rke2.io.
+
+- name: "Validazione versioni Rancher / RKE2"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - group_vars/all.yml
+  vars:
+    # Matrice Rancher -> minor Kubernetes supportate per i cluster downstream.
+    # Fonte: SUSE Rancher support matrix (rilevata ad agosto 2026).
+    # Aggiornare questa mappa quando si passa a una nuova minor di Rancher.
+    rancher_k8s_matrix:
+      "2.14": ["1.33", "1.34", "1.35"]
+      "2.13": ["1.32", "1.33", "1.34"]
+      "2.12": ["1.31", "1.32", "1.33"]
+      "2.11": ["1.30", "1.31", "1.32"]
+    _rancher_minor: "{{ rancher_version.split('.')[0:2] | join('.') }}"
+    _k8s_minor: "{{ cluster_k8s_version | regex_replace('^v', '') | regex_replace('^([0-9]+\\.[0-9]+).*$', '\\1') }}"
+    _rke2_minor: "{{ rke2_version | regex_replace('^v', '') | regex_replace('^([0-9]+\\.[0-9]+).*$', '\\1') }}"
+
+  tasks:
+    - name: "Scarica l'indice del repo Helm rancher-stable"
+      ansible.builtin.uri:
+        url: "https://releases.rancher.com/server-charts/stable/index.yaml"
+        return_content: true
+      register: stable_index
+
+    - name: "Estrai le versioni disponibili su rancher-stable"
+      ansible.builtin.set_fact:
+        stable_versions: >-
+          {{ (stable_index.content | from_yaml).entries.rancher
+             | map(attribute='version') | list }}
+
+    - name: "Ultime 10 versioni pubblicate su rancher-stable"
+      ansible.builtin.debug:
+        msg: "{{ stable_versions[0:10] }}"
+
+    - name: "rancher_version deve esistere su rancher-stable"
+      ansible.builtin.assert:
+        that:
+          - rancher_version in stable_versions
+        fail_msg: >-
+          rancher_version '{{ rancher_version }}' NON e' presente sul canale
+          rancher-stable. Disponibili (prime 10): {{ stable_versions[0:10] }}
+        success_msg: >-
+          rancher_version '{{ rancher_version }}' presente su rancher-stable.
+          La piu' recente sul canale e' '{{ stable_versions | first }}'.
+
+    - name: "Segnala se esiste una patch stable piu' recente"
+      ansible.builtin.debug:
+        msg: >-
+          ATTENZIONE: su rancher-stable e' disponibile la versione
+          '{{ stable_versions | first }}', piu' recente di quella pinnata
+          '{{ rancher_version }}'. Valutare l'aggiornamento.
+      when: stable_versions | first != rancher_version
+
+    - name: "Interroga il channel server RKE2"
+      ansible.builtin.uri:
+        url: "https://update.rke2.io/v1-release/channels"
+        return_content: true
+      register: rke2_channels
+
+    - name: "Release corrente per ogni canale RKE2"
+      ansible.builtin.debug:
+        msg: "canale '{{ item.id }}' -> {{ item.latest | default('n/d') }}"
+      loop: "{{ rke2_channels.json.data | default([]) }}"
+      loop_control:
+        label: "{{ item.id | default('?') }}"
+      when: item.latest is defined
+
+    - name: "cluster_k8s_version deve rientrare nella matrice di Rancher {{ _rancher_minor }}"
+      ansible.builtin.assert:
+        that:
+          - _k8s_minor in rancher_k8s_matrix[_rancher_minor]
+        fail_msg: >-
+          Kubernetes {{ _k8s_minor }} (cluster_k8s_version =
+          {{ cluster_k8s_version }}) NON e' supportato da Rancher
+          {{ _rancher_minor }}. Versioni ammesse:
+          {{ rancher_k8s_matrix[_rancher_minor] | join(', ') }}
+        success_msg: >-
+          cluster_k8s_version {{ cluster_k8s_version }} compatibile con
+          Rancher {{ rancher_version }}.
+      when: _rancher_minor in rancher_k8s_matrix
+
+    - name: "rke2_version (cluster locale Rancher) deve rientrare nella stessa matrice"
+      ansible.builtin.assert:
+        that:
+          - _rke2_minor in rancher_k8s_matrix[_rancher_minor]
+        fail_msg: >-
+          Kubernetes {{ _rke2_minor }} (rke2_version = {{ rke2_version }})
+          NON e' supportato da Rancher {{ _rancher_minor }}. Versioni ammesse:
+          {{ rancher_k8s_matrix[_rancher_minor] | join(', ') }}
+        success_msg: >-
+          rke2_version {{ rke2_version }} compatibile con Rancher
+          {{ rancher_version }}.
+      when: _rancher_minor in rancher_k8s_matrix
+
+    - name: "Avvisa se la minor di Rancher non e' in matrice"
+      ansible.builtin.debug:
+        msg: >-
+          Rancher {{ _rancher_minor }} non e' presente in rancher_k8s_matrix:
+          aggiornare la mappa in questo playbook consultando
+          https://www.suse.com/suse-rancher/support-matrix/all-supported-versions/
+      when: _rancher_minor not in rancher_k8s_matrix
