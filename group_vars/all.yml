@@ -19,7 +19,10 @@ rancher_password: "BRINDISICOLL.2025"
 # Le versioni pinnate qui sotto si validano a runtime con:
 #   ansible-playbook -i inventory.ini check_versions.yml
 # ---------------------------------------------------------------------------
-helm_version: "v3.11.0"
+# Helm resta sulla linea 3.x: i chart Rancher sono validati su Helm 3.
+# Helm 4 e' una major con breaking change e non e' supportata da Rancher 2.14.
+# La linea 3 riceve fix di sicurezza fino a novembre 2026.
+helm_version: "v3.21.3"
 rancher_version: "2.14.3"
 
 # Versione RKE2 del cluster LOCALE che ospita Rancher (nodo masters).

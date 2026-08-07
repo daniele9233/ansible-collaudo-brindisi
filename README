@@ -119,3 +119,35 @@ STEP 4 - PROCEDURA DI INSTALLAZIONE
 ===========================================================================
 
     ansible-playbook -i inventory.ini site.yml
+
+Tag disponibili per eseguire una parte alla volta:
+
+    disk  hosts  rancher  cluster  kubectl  nginx
+
+    ansible-playbook -i inventory.ini site.yml --tags disk
+    ansible-playbook -i inventory.ini site.yml --skip-tags nginx
+
+
+===========================================================================
+DASHBOARD WEB (opzionale)
+===========================================================================
+
+    cd dashboard && ./start.sh
+
+Poi apri http://127.0.0.1:8080 (ascolta solo in locale, senza autenticazione:
+da un'altra macchina usa un tunnel SSH -L 8080:localhost:8080).
+
+Permette di fare dalla GUI tutto quello descritto sopra:
+
+    Simulazione   piano completo di site.yml SENZA connettersi ai server
+                  (--list-tasks / --list-hosts): play, host, ruoli, ordine
+    Inventario    host definiti in inventory.ini + ping di raggiungibilita'
+    Versioni      controlli statici sulla matrice + validazione online
+    Dischi        esegue check_disk.yml e mostra la tabella dei dischi
+    Dry-Run       site.yml --check --diff per tag
+    Deploy        esecuzione reale, con conferma esplicita
+
+Su un controller senza internet esegui una volta dashboard/vendor.sh da una
+macchina collegata e copia dashboard/static/vendor/ sul controller.
+
+Dettagli in dashboard/README.md

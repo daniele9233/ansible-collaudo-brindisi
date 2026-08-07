@@ -17,3 +17,14 @@ roles/master1_helm_cert_manager_install/files/*.pem
 
 # Collection scaricate localmente
 collections/ansible_collections/
+
+# Dashboard
+# Le directory restano nel repo (.gitkeep) ma il contenuto generato no:
+# state/ contiene i report di check_disk.yml, vendor/ gli asset scaricati
+# da ./vendor.sh. Un'esclusione della directory intera impedirebbe a git di
+# reincludere il .gitkeep, quindi si escludono i contenuti.
+dashboard/__pycache__/
+dashboard/state/*
+!dashboard/state/.gitkeep
+dashboard/static/vendor/*
+!dashboard/static/vendor/.gitkeep

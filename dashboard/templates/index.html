@@ -1,0 +1,1242 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Faro — Collaudo Brindisi</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'><path d='M20,3L26,15H14Z' fill='%23e8a838'/><rect x='16' y='15' width='8' height='22' fill='%23e8a838'/></svg>" />
+
+{% if vendored %}
+<!-- Asset serviti in locale (dashboard/static/vendor): funziona senza internet. -->
+<script src="/static/vendor/tailwind.js"></script>
+<script src="/static/vendor/lucide.js"></script>
+{% else %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+{% endif %}
+
+<script>
+  // Se Tailwind non e' stato caricato (controller senza internet e asset non
+  // ancora scaricati con ./vendor.sh) la pagina resta usabile: vedi
+  // il blocco .no-tw piu' sotto e il banner in fondo al file.
+  if (typeof tailwind === 'undefined') { window.tailwind = {}; }
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          sans: ['"Space Grotesk"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+          mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
+        },
+        colors: {
+          ink:  { 900:'#070a0f', 800:'#0a0e14', 700:'#11161d', 600:'#161d27', 500:'#1c2532', 400:'#243042' },
+          rule: { DEFAULT:'#1f2733', strong:'#2a3441' },
+          fg:   { DEFAULT:'#e6edf3', mute:'#8b96a3', dim:'#5d6773', off:'#3f4854' },
+          brand:{ DEFAULT:'#e8a838', hi:'#f3bb5a', lo:'#c48a1d' },
+          ok:'#3fb87a', warn:'#e8a838', bad:'#e25555', info:'#5aa6ed', pend:'#6a7280',
+        },
+      }
+    }
+  }
+</script>
+
+<style>
+  html, body { background:#0a0e14; color:#e6edf3; font-family:'Space Grotesk', sans-serif; }
+  *::-webkit-scrollbar { width:10px; height:10px; }
+  *::-webkit-scrollbar-track { background: transparent; }
+  *::-webkit-scrollbar-thumb { background:#1f2733; border-radius:6px; }
+  *::-webkit-scrollbar-thumb:hover { background:#2a3441; }
+
+  .nav-item[aria-current="page"] { background:#161d27; color:#fafafa; }
+  .nav-item[aria-current="page"]::before { transform: scaleY(1); }
+  .nav-item::before {
+    content:""; position:absolute; left:0; top:8px; bottom:8px; width:2px;
+    background:#e8a838; transform: scaleY(0); transform-origin:center;
+    transition: transform 180ms ease-out;
+  }
+  .nav-item:hover { color:#fafafa; background:#11161d; }
+
+  details[open] > summary .caret { transform: rotate(90deg); }
+  summary { list-style:none; }
+  summary::-webkit-details-marker { display:none; }
+
+  .section-label { font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:#5d6773; font-weight:600; }
+  .crumb-sep::after { content:"›"; margin:0 8px; color:#3f4854; }
+
+  .grid-bg {
+    background-image:
+      linear-gradient(to right, rgba(255,255,255,.025) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255,255,255,.025) 1px, transparent 1px);
+    background-size:32px 32px; background-position:-1px -1px;
+  }
+
+  .field {
+    height:36px; background:#0a0e14; border:1px solid #1f2733; border-radius:6px;
+    padding:0 12px; color:#e6edf3; font-size:14px; width:100%;
+    transition: border-color 150ms ease-out;
+  }
+  .field:focus { outline:none; border-color:#e8a838; }
+  .field::placeholder { color:#5d6773; }
+
+  .btn {
+    height:36px; padding:0 14px; border-radius:6px; font-weight:500; font-size:13px;
+    display:inline-flex; align-items:center; gap:8px; border:1px solid transparent;
+    white-space:nowrap; transition: background-color 150ms, border-color 150ms, color 150ms;
+  }
+  .btn-primary { background:#e8a838; color:#0a0e14; height:40px; padding:0 18px; }
+  .btn-primary:hover { background:#f3bb5a; }
+  .btn-ghost { background:transparent; color:#e6edf3; border-color:#2a3441; }
+  .btn-ghost:hover { border-color:#3f4854; background:#11161d; }
+  .btn-danger { background:#e25555; color:#fff; }
+  .btn-danger:hover { background:#cf3f3f; }
+  .btn-sm { height:32px; padding:0 12px; font-size:12px; }
+  .btn:disabled { opacity:.4; cursor:not-allowed; }
+
+  .tbl { width:100%; border-collapse:collapse; }
+  .tbl th {
+    text-align:left; font-weight:500; color:#8b96a3; font-size:11px;
+    text-transform:uppercase; letter-spacing:.06em; padding:11px 16px;
+    background:#11161d; border-bottom:1px solid #1f2733; white-space:nowrap;
+  }
+  .tbl td { padding:12px 16px; font-size:13px; border-bottom:1px solid #1f2733; }
+  .tbl tr:hover td { background:#11161d; }
+  .tbl tr:last-child td { border-bottom:none; }
+
+  .badge {
+    display:inline-flex; align-items:center; gap:6px; font-size:11px;
+    padding:3px 9px; border-radius:999px; font-weight:500; border:1px solid transparent;
+  }
+  .badge .dot { width:6px; height:6px; border-radius:999px; }
+  .badge-ok   { color:#7dd9a4; background:rgba(63,184,122,.10); border-color:rgba(63,184,122,.25) } .badge-ok .dot{background:#3fb87a}
+  .badge-run  { color:#f3bb5a; background:rgba(232,168,56,.10); border-color:rgba(232,168,56,.28) } .badge-run .dot{background:#e8a838}
+  .badge-bad  { color:#f08c8c; background:rgba(226,85,85,.10); border-color:rgba(226,85,85,.25) }  .badge-bad .dot{background:#e25555}
+  .badge-pend { color:#9aa3ad; background:rgba(106,114,128,.12); border-color:rgba(106,114,128,.30)} .badge-pend .dot{background:#6a7280}
+  .badge-info { color:#9ec6f0; background:rgba(90,166,237,.10); border-color:rgba(90,166,237,.25) } .badge-info .dot{background:#5aa6ed}
+
+  .term {
+    background:#070a0f; border:1px solid #1f2733; border-radius:8px;
+    font-family:'JetBrains Mono', monospace; font-size:12.5px; line-height:1.55; color:#cdd6df;
+  }
+  .term-out { padding:14px 16px; overflow:auto; height:100%; white-space:pre-wrap; word-break:break-word; }
+
+  .card { background:#161d27; border:1px solid #1f2733; border-radius:8px; }
+  .card-hover { transition: border-color 150ms, background 150ms; }
+  .card-hover:hover { border-color:#2a3441; background:#1c2532; }
+
+  .code {
+    font-family:'JetBrains Mono', monospace; font-size:12.5px; background:#070a0f;
+    border:1px solid #1f2733; border-radius:6px; padding:12px 14px; color:#cdd6df; line-height:1.55;
+    display:flex; align-items:flex-start; justify-content:space-between; gap:12px;
+  }
+  .icon-btn {
+    width:34px; height:34px; display:inline-flex; align-items:center; justify-content:center;
+    border-radius:6px; color:#8b96a3; transition: all 150ms ease-out;
+  }
+  .icon-btn:hover { color:#fafafa; background:#161d27; }
+
+  .a-blk{color:#5d6773} .a-red{color:#e25555} .a-grn{color:#3fb87a} .a-ylw{color:#e8a838}
+  .a-blu{color:#5aa6ed} .a-mag{color:#c084fc} .a-cyn{color:#22d3ee} .a-wht{color:#e6edf3}
+  .a-bld{font-weight:600} .a-dim{opacity:.6} .a-und{text-decoration:underline}
+
+  @keyframes rise { from { transform:translateY(8px); opacity:0 } to { transform:none; opacity:1 } }
+  .rise { animation: rise 420ms ease-out both; }
+  @keyframes pulse-soft { 0%,100%{opacity:1} 50%{opacity:.35} }
+  .pulse { animation: pulse-soft 1.5s ease-in-out infinite; }
+
+  .modal-back { backdrop-filter: blur(8px); background: rgba(7,10,15,.72); }
+
+  /* timeline della simulazione */
+  .tl { position:relative; padding-left:30px; }
+  .tl::before { content:""; position:absolute; left:11px; top:6px; bottom:6px; width:2px; background:#1f2733; }
+  .tl-node { position:relative; }
+  .tl-node::before {
+    content:""; position:absolute; left:-24px; top:18px; width:10px; height:10px;
+    border-radius:999px; background:#0a0e14; border:2px solid #e8a838;
+  }
+  .tl-node.tl-mute::before { border-color:#3f4854; }
+
+  .chip {
+    display:inline-flex; align-items:center; gap:5px; font-size:11px; padding:2px 8px;
+    border-radius:5px; background:#0a0e14; border:1px solid #1f2733;
+    color:#8b96a3; font-family:'JetBrains Mono', monospace;
+  }
+  .disk-row { border-left:2px solid transparent; }
+  .disk-free  { border-left-color:#3fb87a; background:rgba(63,184,122,.05); }
+  .disk-used  { border-left-color:#3f4854; }
+  .disk-pick  { border-left-color:#e8a838; background:rgba(232,168,56,.07); }
+
+  /* Fallback minimo quando Tailwind non e' disponibile: la GUI perde la
+     spaziatura fine ma resta completamente navigabile e leggibile. */
+  .no-tw body { font-family: system-ui, sans-serif; }
+  .no-tw .hidden { display:none !important; }
+  /* utility Tailwind indispensabili per l'impianto della pagina */
+  .no-tw .flex { display:flex; }
+  .no-tw .flex-col { flex-direction:column; }
+  .no-tw .flex-1 { flex:1 1 0%; }
+  .no-tw .shrink-0 { flex-shrink:0; }
+  .no-tw .min-w-0 { min-width:0; }
+  .no-tw .min-h-screen { min-height:100vh; }
+  .no-tw .items-center { align-items:center; }
+  .no-tw .items-start { align-items:flex-start; }
+  .no-tw .justify-between { justify-content:space-between; }
+  .no-tw .justify-center { justify-content:center; }
+  .no-tw .flex-wrap { flex-wrap:wrap; }
+  .no-tw .grid { display:block; }
+  .no-tw aside { width:230px; min-width:230px; border-right:1px solid #1f2733; height:100vh; overflow-y:auto; }
+  .no-tw aside svg { width:36px; height:36px; }
+  .no-tw aside > div, .no-tw nav { padding:12px; }
+  .no-tw nav a { display:block; padding:7px 10px; color:#8b96a3; text-decoration:none; border-radius:6px; }
+  .no-tw nav a[aria-current="page"] { background:#161d27; color:#fff; }
+  .no-tw header { height:56px; padding:0 20px; border-bottom:1px solid #1f2733; display:flex; align-items:center; gap:14px; }
+  .no-tw section { padding:26px; }
+  .no-tw .card { padding:16px; margin-bottom:14px; }
+  .no-tw h1 { font-size:23px; font-weight:600; margin-bottom:6px; }
+  .no-tw [data-term-slot] { display:none; }
+  .no-tw .btn { margin:3px 6px 3px 0; }
+  .no-tw .disk-row { padding:9px 16px; }
+  .no-tw .disk-row > span { display:inline-block; margin-right:16px; }
+  .no-tw .chip, .no-tw .badge { margin:2px 4px 2px 0; }
+  .no-tw .field { margin-bottom:10px; }
+  .no-tw label { display:block; margin-top:8px; }
+  .no-tw .tbl th, .no-tw .tbl td { padding:9px 14px; }
+  .no-tw ol, .no-tw ul { margin-left:20px; }
+  #tw-warn { display:none; }
+  .no-tw #tw-warn { display:block; }
+</style>
+</head>
+<body class="antialiased">
+
+<div id="tw-warn" style="background:rgba(232,168,56,.12); border-bottom:1px solid rgba(232,168,56,.35); color:#f3bb5a; padding:10px 20px; font-size:13px">
+  <strong>Fogli di stile non caricati.</strong>
+  Questo controller non raggiunge i CDN. Scarica gli asset in locale una volta sola con
+  <code style="font-family:'JetBrains Mono',monospace">cd dashboard &amp;&amp; ./vendor.sh</code>
+  da una macchina con internet, oppure copia la cartella <code style="font-family:'JetBrains Mono',monospace">dashboard/static/vendor/</code>.
+  La dashboard resta comunque pienamente funzionante.
+</div>
+
+<div class="flex min-h-screen">
+
+  <!-- ================= SIDEBAR ================= -->
+  <aside class="w-64 shrink-0 border-r border-rule bg-ink-900 flex flex-col sticky top-0 h-screen">
+    <div class="px-5 py-5 border-b border-rule flex items-center gap-3">
+      <svg viewBox="0 0 40 40" class="w-9 h-9 shrink-0">
+        <defs>
+          <linearGradient id="lg" x1="0" x2="1" y1="0" y2="1">
+            <stop offset="0" stop-color="#f3bb5a"/><stop offset="1" stop-color="#c48a1d"/>
+          </linearGradient>
+          <radialGradient id="lglow" cx="50%" cy="35%" r="50%">
+            <stop offset="0" stop-color="#e8a838" stop-opacity=".35"/>
+            <stop offset="1" stop-color="#e8a838" stop-opacity="0"/>
+          </radialGradient>
+        </defs>
+        <circle cx="20" cy="14" r="17" fill="url(#lglow)"/>
+        <path d="M20,3 L25.5,14 L14.5,14 Z" fill="url(#lg)"/>
+        <path d="M15.6,15.5 h8.8 l1.6,21 h-12 Z" fill="url(#lg)"/>
+        <rect x="13" y="14" width="14" height="1.6" fill="#0a0e14"/>
+        <circle cx="20" cy="9.5" r="1.6" fill="#0a0e14"/>
+      </svg>
+      <div class="leading-tight min-w-0">
+        <div class="font-bold tracking-tight text-[15px]">Faro</div>
+        <div class="text-[11px] font-light text-fg-mute -mt-0.5 truncate">Collaudo Brindisi</div>
+      </div>
+    </div>
+
+    <nav class="flex-1 overflow-y-auto py-3 px-2 space-y-4">
+      <details open>
+        <summary class="flex items-center justify-between px-3 py-1 cursor-pointer">
+          <span class="section-label">Panoramica</span>
+          <i data-lucide="chevron-right" class="caret w-3 h-3 text-fg-dim transition-transform"></i>
+        </summary>
+        <ul class="mt-1 space-y-px">
+          <li><a href="#/dashboard" data-route="dashboard" class="nav-item relative flex items-center gap-3 px-3 py-2 rounded-md text-[13px] text-fg-mute"><i data-lucide="home" class="w-4 h-4"></i>Dashboard</a></li>
+          <li><a href="#/inventario" data-route="inventario" class="nav-item relative flex items-center gap-3 px-3 py-2 rounded-md text-[13px] text-fg-mute"><i data-lucide="server" class="w-4 h-4"></i>Inventario</a></li>
+          <li><a href="#/simulazione" data-route="simulazione" class="nav-item relative flex items-center gap-3 px-3 py-2 rounded-md text-[13px] text-fg-mute"><i data-lucide="git-branch" class="w-4 h-4"></i>Simulazione</a></li>
+        </ul>
+      </details>
+
+      <details open>
+        <summary class="flex items-center justify-between px-3 py-1 cursor-pointer">
+          <span class="section-label">Verifiche</span>
+          <i data-lucide="chevron-right" class="caret w-3 h-3 text-fg-dim transition-transform"></i>
+        </summary>
+        <ul class="mt-1 space-y-px">
+          <li><a href="#/dischi" data-route="dischi" class="nav-item relative flex items-center gap-3 px-3 py-2 rounded-md text-[13px] text-fg-mute"><i data-lucide="hard-drive" class="w-4 h-4"></i>Dischi</a></li>
+          <li><a href="#/versioni" data-route="versioni" class="nav-item relative flex items-center gap-3 px-3 py-2 rounded-md text-[13px] text-fg-mute"><i data-lucide="git-compare" class="w-4 h-4"></i>Versioni</a></li>
+          <li><a href="#/dryrun" data-route="dryrun" class="nav-item relative flex items-center gap-3 px-3 py-2 rounded-md text-[13px] text-fg-mute"><i data-lucide="flask-conical" class="w-4 h-4"></i>Dry-Run</a></li>
+        </ul>
+      </details>
+
+      <details open>
+        <summary class="flex items-center justify-between px-3 py-1 cursor-pointer">
+          <span class="section-label">Esecuzione</span>
+          <i data-lucide="chevron-right" class="caret w-3 h-3 text-fg-dim transition-transform"></i>
+        </summary>
+        <ul class="mt-1 space-y-px">
+          <li><a href="#/deploy" data-route="deploy" class="nav-item relative flex items-center gap-3 px-3 py-2 rounded-md text-[13px] text-fg-mute hover:!text-bad"><i data-lucide="rocket" class="w-4 h-4"></i>Deploy</a></li>
+        </ul>
+      </details>
+
+      <details open>
+        <summary class="flex items-center justify-between px-3 py-1 cursor-pointer">
+          <span class="section-label">Documentazione</span>
+          <i data-lucide="chevron-right" class="caret w-3 h-3 text-fg-dim transition-transform"></i>
+        </summary>
+        <ul class="mt-1 space-y-px">
+          <li><a href="#/howto" data-route="howto" class="nav-item relative flex items-center gap-3 px-3 py-2 rounded-md text-[13px] text-fg-mute"><i data-lucide="book-open" class="w-4 h-4"></i>HOW-TO</a></li>
+        </ul>
+      </details>
+    </nav>
+
+    <div class="px-4 py-3 border-t border-rule text-[11px] text-fg-dim flex items-center justify-between">
+      <span>Faro · v1.0.0</span>
+      <span class="inline-flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-ok"></span>locale</span>
+    </div>
+  </aside>
+
+  <!-- ================= MAIN ================= -->
+  <main class="flex-1 min-w-0 flex flex-col">
+    <header class="h-16 sticky top-0 z-30 bg-ink-900 border-b border-rule flex items-center px-6 gap-4">
+      <div class="text-[13px] flex items-center" id="breadcrumb">
+        <span class="text-fg-mute">Panoramica</span><span class="crumb-sep"></span><span class="text-fg">Dashboard</span>
+      </div>
+      <div class="flex-1"></div>
+      <div class="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-ink-700 border border-rule text-[12px] text-fg-mute">
+        <i data-lucide="git-branch" class="w-3.5 h-3.5"></i><span>main</span>
+        <span class="mx-1 text-fg-off">·</span>
+        <span class="text-fg font-mono" id="hdr-domain">…</span>
+      </div>
+      <div id="hdr-job" class="hidden"><span class="badge badge-run"><span class="dot pulse"></span><span id="hdr-job-txt">in esecuzione</span></span></div>
+      <button class="icon-btn" id="btn-refresh" title="Ricarica dati"><i data-lucide="refresh-cw" class="w-4 h-4"></i></button>
+    </header>
+
+    <div id="content" class="flex-1 min-w-0 bg-ink-800">
+
+      <!-- ============ DASHBOARD ============ -->
+      <section data-screen="dashboard" class="p-8 max-w-[1400px] rise">
+        <div class="relative mb-8">
+          <div class="absolute inset-0 grid-bg opacity-50 -mx-8 -mt-8 -mb-4 rounded-b-lg" style="pointer-events:none"></div>
+          <div class="relative">
+            <div class="text-[11px] tracking-[.15em] uppercase text-fg-dim mb-2">ASL Brindisi · Ambiente di collaudo</div>
+            <h1 class="text-[26px] font-semibold leading-tight">Rancher / RKE2 — pannello operativo</h1>
+            <p class="text-fg-mute mt-1 text-[14px] max-w-[760px]">
+              Simula il playbook senza toccare i server, verifica su quale disco lavorerà <span class="font-mono text-fg">create_disk</span>,
+              controlla la matrice di compatibilità e — solo quando serve — esegui il deploy reale.
+            </p>
+          </div>
+        </div>
+
+        <div class="grid md:grid-cols-3 gap-4 mb-6">
+          <div class="card card-hover p-5">
+            <div class="flex items-center gap-2 text-fg-mute text-[12px] mb-3"><i data-lucide="server" class="w-4 h-4"></i>Inventario</div>
+            <div class="text-[30px] font-bold leading-none" id="kpi-hosts">—</div>
+            <div class="text-[12px] text-fg-mute mt-1" id="kpi-groups">—</div>
+          </div>
+          <div class="card card-hover p-5">
+            <div class="flex items-center gap-2 text-fg-mute text-[12px] mb-3"><i data-lucide="git-compare" class="w-4 h-4"></i>Compatibilità versioni</div>
+            <div class="text-[30px] font-bold leading-none" id="kpi-checks">—</div>
+            <div class="text-[12px] text-fg-mute mt-1" id="kpi-checks-sub">controlli statici</div>
+          </div>
+          <div class="card card-hover p-5">
+            <div class="flex items-center gap-2 text-fg-mute text-[12px] mb-3"><i data-lucide="terminal" class="w-4 h-4"></i>Ambiente</div>
+            <div class="text-[15px] font-semibold leading-tight font-mono" id="kpi-ansible">—</div>
+            <div class="text-[12px] text-fg-mute mt-1 font-mono truncate" id="kpi-repo">—</div>
+          </div>
+        </div>
+
+        <div class="grid md:grid-cols-2 gap-4 mb-6">
+          <div class="card p-6">
+            <div class="font-semibold text-[15px] mb-1">Versioni pinnate</div>
+            <p class="text-[12.5px] text-fg-mute mb-4">Lette da <span class="font-mono">group_vars/all.yml</span>.</p>
+            <div id="ver-mini" class="space-y-2 text-[13px]"></div>
+            <a href="#/versioni" class="btn btn-ghost btn-sm mt-4"><i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>Dettaglio matrice</a>
+          </div>
+          <div class="card p-6">
+            <div class="font-semibold text-[15px] mb-1">Azioni sicure</div>
+            <p class="text-[12.5px] text-fg-mute mb-4">Nessuna di queste modifica i server.</p>
+            <div class="grid grid-cols-1 gap-2">
+              <a href="#/simulazione" class="btn btn-ghost justify-start"><i data-lucide="git-branch" class="w-4 h-4"></i>Simula il playbook (offline)</a>
+              <a href="#/dischi" class="btn btn-ghost justify-start"><i data-lucide="hard-drive" class="w-4 h-4"></i>Verifica dischi</a>
+              <a href="#/versioni" class="btn btn-ghost justify-start"><i data-lucide="git-compare" class="w-4 h-4"></i>Verifica versioni online</a>
+            </div>
+          </div>
+        </div>
+
+        <div class="card p-5 border-l-2" style="border-left-color:#5aa6ed">
+          <div class="flex gap-3">
+            <i data-lucide="info" class="w-4 h-4 text-info shrink-0 mt-0.5"></i>
+            <div class="text-[12.5px] text-fg-mute">
+              La dashboard ascolta solo su <span class="font-mono text-fg">127.0.0.1:8080</span> e non ha autenticazione.
+              Per usarla da un'altra macchina apri un tunnel SSH, non esporla in rete.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ INVENTARIO ============ -->
+      <section data-screen="inventario" class="p-8 max-w-[1200px] hidden rise">
+        <h1 class="text-[26px] font-semibold leading-tight">Inventario</h1>
+        <p class="text-fg-mute mt-1 mb-6 text-[14px]">Host definiti in <span class="font-mono">inventory.ini</span>. Sola lettura del file, nessuna connessione.</p>
+        <div id="inv-body" class="space-y-5"></div>
+        <div class="card p-5 mt-6">
+          <div class="text-[13px] font-medium mb-2">Verifica raggiungibilità</div>
+          <p class="text-[12.5px] text-fg-mute mb-3">Esegue <span class="font-mono">ansible all -m ping</span>. Si collega ai server ma non modifica nulla.</p>
+          <button class="btn btn-ghost" data-action="ping"><i data-lucide="radio" class="w-4 h-4"></i>Ping di tutti gli host</button>
+        </div>
+      </section>
+
+      <!-- ============ SIMULAZIONE ============ -->
+      <section data-screen="simulazione" class="hidden rise">
+        <div class="flex" style="min-height:calc(100vh - 64px)">
+          <div class="flex-1 min-w-0 p-8">
+            <h1 class="text-[26px] font-semibold leading-tight">Simulazione</h1>
+            <p class="text-fg-mute mt-1 mb-5 text-[14px] max-w-[760px]">
+              Piano di esecuzione completo di <span class="font-mono">site.yml</span>: quali play, su quali host, con quali task e in che ordine.
+            </p>
+
+            <div class="card p-4 mb-5 border-l-2" style="border-left-color:#3fb87a">
+              <div class="flex gap-3">
+                <i data-lucide="shield-check" class="w-4 h-4 text-ok shrink-0 mt-0.5"></i>
+                <div class="text-[12.5px] text-fg-mute">
+                  Ricavato da <span class="font-mono text-fg">--list-tasks</span> e <span class="font-mono text-fg">--list-hosts</span>:
+                  Ansible risolve solo l'inventario in locale, <strong class="text-fg">non apre nessuna connessione SSH</strong> e non esegue alcun task.
+                  È la modalità più sicura per vedere cosa succederebbe.
+                </div>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-3 mb-5 flex-wrap">
+              <button class="btn btn-primary" id="btn-plan"><i data-lucide="refresh-cw" class="w-4 h-4"></i>Genera piano</button>
+              <button class="btn btn-ghost btn-sm" data-action="plan_tasks"><i data-lucide="square-terminal" class="w-3.5 h-3.5"></i>Output grezzo --list-tasks</button>
+              <div id="plan-kpi" class="flex items-center gap-2 flex-wrap"></div>
+            </div>
+
+            <div id="plan-body" class="tl"></div>
+          </div>
+          <div class="hidden xl:block w-[440px] shrink-0 bg-ink-900 border-l border-rule sticky top-16 self-start" style="height:calc(100vh - 64px)" data-term-slot></div>
+        </div>
+      </section>
+
+      <!-- ============ DISCHI ============ -->
+      <section data-screen="dischi" class="hidden rise">
+        <div class="flex" style="min-height:calc(100vh - 64px)">
+          <div class="flex-1 min-w-0 p-8">
+            <h1 class="text-[26px] font-semibold leading-tight">Verifica dischi</h1>
+            <p class="text-fg-mute mt-1 mb-5 text-[14px] max-w-[760px]">
+              Mostra su quale disco lavorerebbe il ruolo <span class="font-mono">create_disk</span> su ogni nodo.
+            </p>
+
+            <div class="card p-4 mb-5 border-l-2" style="border-left-color:#3fb87a">
+              <div class="flex gap-3">
+                <i data-lucide="shield-check" class="w-4 h-4 text-ok shrink-0 mt-0.5"></i>
+                <div class="text-[12.5px] text-fg-mute">
+                  Esegue <span class="font-mono text-fg">check_disk.yml</span>, che lancia solo <span class="font-mono">lsblk</span> e <span class="font-mono">stat</span>.
+                  Non tocca partizioni, LVM, filesystem o <span class="font-mono">/etc/fstab</span>.
+                </div>
+              </div>
+            </div>
+
+            <div class="card p-5 mb-5">
+              <div class="grid md:grid-cols-2 gap-4">
+                <div>
+                  <label class="text-[12px] font-medium text-fg-mute">Limita agli host (opzionale)</label>
+                  <input class="field mt-2 font-mono" id="disk-limit" placeholder="es. k8sworker01c  oppure  workers" />
+                </div>
+                <div>
+                  <label class="text-[12px] font-medium text-fg-mute">Forza un device (opzionale)</label>
+                  <input class="field mt-2 font-mono" id="disk-device" placeholder="es. /dev/sdb" />
+                </div>
+              </div>
+              <p class="text-[11.5px] text-fg-dim mt-3">
+                Se forzi un device viene comunque validato: se non risulta libero il playbook si ferma con errore.
+              </p>
+              <button class="btn btn-primary mt-4" id="btn-check-disk"><i data-lucide="search" class="w-4 h-4"></i>Verifica dischi</button>
+            </div>
+
+            <div class="flex items-center justify-between mb-3">
+              <div class="text-[13px] font-medium">Ultimo report</div>
+              <div class="text-[11.5px] text-fg-dim font-mono" id="disk-ts">—</div>
+            </div>
+            <div id="disk-body" class="space-y-4"></div>
+          </div>
+          <div class="hidden xl:block w-[440px] shrink-0 bg-ink-900 border-l border-rule sticky top-16 self-start" style="height:calc(100vh - 64px)" data-term-slot></div>
+        </div>
+      </section>
+
+      <!-- ============ VERSIONI ============ -->
+      <section data-screen="versioni" class="hidden rise">
+        <div class="flex" style="min-height:calc(100vh - 64px)">
+          <div class="flex-1 min-w-0 p-8">
+            <h1 class="text-[26px] font-semibold leading-tight">Versioni e compatibilità</h1>
+            <p class="text-fg-mute mt-1 mb-5 text-[14px] max-w-[760px]">
+              Controllo statico delle versioni pinnate e validazione online contro il canale <span class="font-mono">rancher-stable</span>.
+            </p>
+
+            <div class="card overflow-hidden mb-5">
+              <table class="tbl">
+                <thead><tr><th>Variabile</th><th>Valore</th><th>Note</th></tr></thead>
+                <tbody id="ver-table"></tbody>
+              </table>
+            </div>
+
+            <div class="text-[13px] font-medium mb-3">Controlli statici</div>
+            <div id="ver-checks" class="space-y-2 mb-6"></div>
+
+            <div class="card p-5 mb-5">
+              <div class="text-[13px] font-medium mb-1">Matrice Rancher → Kubernetes</div>
+              <p class="text-[12.5px] text-fg-mute mb-3">Versioni certificate per i cluster downstream.</p>
+              <div class="overflow-x-auto"><table class="tbl">
+                <thead><tr><th>Rancher</th><th>Kubernetes supportate</th></tr></thead>
+                <tbody id="matrix-table"></tbody>
+              </table></div>
+            </div>
+
+            <div class="card p-5">
+              <div class="text-[13px] font-medium mb-1">Validazione online</div>
+              <p class="text-[12.5px] text-fg-mute mb-3">
+                <span class="font-mono">check_versions.yml</span> interroga <span class="font-mono">releases.rancher.com</span>,
+                <span class="font-mono">update.rke2.io</span> e <span class="font-mono">get.helm.sh</span>. Gira solo sul controller.
+              </p>
+              <button class="btn btn-primary" data-action="check_versions"><i data-lucide="globe" class="w-4 h-4"></i>Verifica online</button>
+            </div>
+          </div>
+          <div class="hidden xl:block w-[440px] shrink-0 bg-ink-900 border-l border-rule sticky top-16 self-start" style="height:calc(100vh - 64px)" data-term-slot></div>
+        </div>
+      </section>
+
+      <!-- ============ DRY-RUN ============ -->
+      <section data-screen="dryrun" class="hidden rise">
+        <div class="flex" style="min-height:calc(100vh - 64px)">
+          <div class="flex-1 min-w-0 p-8">
+            <h1 class="text-[26px] font-semibold leading-tight">Dry-Run</h1>
+            <p class="text-fg-mute mt-1 mb-5 text-[14px] max-w-[760px]">
+              Esecuzione con <span class="font-mono">--check --diff</span>: Ansible si collega ai server e mostra cosa cambierebbe, senza applicare nulla.
+            </p>
+
+            <div class="card p-4 mb-5 border-l-2" style="border-left-color:#e8a838">
+              <div class="flex gap-3">
+                <i data-lucide="triangle-alert" class="w-4 h-4 text-warn shrink-0 mt-0.5"></i>
+                <div class="text-[12.5px] text-fg-mute">
+                  <strong class="text-fg">Limite noto del <span class="font-mono">--check</span> su questo playbook.</strong>
+                  I ruoli Rancher usano molti task <span class="font-mono">command</span>/<span class="font-mono">shell</span>, che in check mode
+                  vengono saltati: i task successivi che leggono il loro output si fermano con variabile non definita.
+                  Il dry-run è quindi affidabile sui tag <span class="font-mono">disk</span>, <span class="font-mono">hosts</span> e
+                  <span class="font-mono">nginx</span>; per una anteprima completa usa la
+                  <a href="#/simulazione" class="text-brand hover:text-brand-hi underline">Simulazione</a>.
+                </div>
+              </div>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-4 max-w-[820px]">
+              <div class="card card-hover p-5">
+                <span class="badge badge-ok mb-3"><span class="dot"></span>affidabile</span>
+                <div class="font-medium text-[14px] mb-1">Dischi</div>
+                <p class="text-[12px] text-fg-mute mb-4">Il ruolo <span class="font-mono">create_disk</span> riconosce <span class="font-mono">--check</span> e salta il provisioning.</p>
+                <button class="btn btn-primary w-full justify-center" data-action="dryrun_disk"><i data-lucide="flask-conical" class="w-4 h-4"></i>Dry-run · disk</button>
+              </div>
+              <div class="card card-hover p-5">
+                <span class="badge badge-ok mb-3"><span class="dot"></span>affidabile</span>
+                <div class="font-medium text-[14px] mb-1">/etc/hosts</div>
+                <p class="text-[12px] text-fg-mute mb-4">Mostra il diff delle righe che verrebbero scritte in <span class="font-mono">/etc/hosts</span>.</p>
+                <button class="btn btn-primary w-full justify-center" data-action="dryrun_hosts"><i data-lucide="flask-conical" class="w-4 h-4"></i>Dry-run · hosts</button>
+              </div>
+              <div class="card card-hover p-5">
+                <span class="badge badge-ok mb-3"><span class="dot"></span>affidabile</span>
+                <div class="font-medium text-[14px] mb-1">Nginx (load balancer)</div>
+                <p class="text-[12px] text-fg-mute mb-4">Diff di <span class="font-mono">nginx.conf</span> e dei certificati sul bilanciatore.</p>
+                <button class="btn btn-primary w-full justify-center" data-action="dryrun_nginx"><i data-lucide="flask-conical" class="w-4 h-4"></i>Dry-run · nginx</button>
+              </div>
+              <div class="card card-hover p-5" style="border-color:rgba(232,168,56,.35)">
+                <span class="badge badge-run mb-3"><span class="dot"></span>parziale</span>
+                <div class="font-medium text-[14px] mb-1">Playbook completo</div>
+                <p class="text-[12px] text-fg-mute mb-4">Si ferma sul primo task Rancher che dipende da un <span class="font-mono">command</span> saltato.</p>
+                <button class="btn btn-ghost w-full justify-center" data-action="dryrun_all"><i data-lucide="flask-conical" class="w-4 h-4"></i>Dry-run · site.yml</button>
+              </div>
+            </div>
+          </div>
+          <div class="hidden xl:block w-[440px] shrink-0 bg-ink-900 border-l border-rule sticky top-16 self-start" style="height:calc(100vh - 64px)" data-term-slot></div>
+        </div>
+      </section>
+
+      <!-- ============ DEPLOY ============ -->
+      <section data-screen="deploy" class="hidden rise">
+        <div class="flex" style="min-height:calc(100vh - 64px)">
+          <div class="flex-1 min-w-0 p-8">
+            <h1 class="text-[26px] font-semibold leading-tight">Deploy</h1>
+            <p class="text-fg-mute mt-1 mb-5 text-[14px] max-w-[760px]">Esecuzione reale sui server. Le modifiche vengono applicate.</p>
+
+            <div class="card p-4 mb-5 border-l-2" style="border-left-color:#e25555">
+              <div class="flex gap-3">
+                <i data-lucide="triangle-alert" class="w-4 h-4 text-bad shrink-0 mt-0.5"></i>
+                <div class="text-[12.5px] text-fg-mute">
+                  Prima di lanciare il tag <span class="font-mono text-fg">disk</span> esegui sempre la
+                  <a href="#/dischi" class="text-brand hover:text-brand-hi underline">verifica dischi</a>:
+                  quel ruolo partiziona e formatta.
+                </div>
+              </div>
+            </div>
+
+            <div class="card p-5 mb-5 max-w-[820px]">
+              <label class="text-[12px] font-medium text-fg-mute">Limita agli host (opzionale)</label>
+              <input class="field mt-2 font-mono" id="deploy-limit" placeholder="es. k8sworker01c  oppure  workers" />
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-4 max-w-[820px]" id="deploy-cards"></div>
+          </div>
+          <div class="hidden xl:block w-[440px] shrink-0 bg-ink-900 border-l border-rule sticky top-16 self-start" style="height:calc(100vh - 64px)" data-term-slot></div>
+        </div>
+      </section>
+
+      <!-- ============ HOW-TO ============ -->
+      <section data-screen="howto" class="p-8 max-w-[900px] hidden rise">
+        <h1 class="text-[26px] font-semibold leading-tight">HOW-TO</h1>
+        <p class="text-fg-mute mt-1 mb-6 text-[14px]">Procedura operativa e comandi equivalenti da terminale.</p>
+
+        <div class="space-y-5">
+          <div class="card p-6">
+            <div class="font-semibold text-[15px] mb-3">Ordine consigliato</div>
+            <ol class="space-y-2 text-[13px] text-fg-mute list-decimal pl-5">
+              <li><span class="text-fg">Simulazione</span> — verifica play, host e ordine dei task senza toccare nulla.</li>
+              <li><span class="text-fg">Versioni</span> — conferma che Rancher, RKE2 e Helm siano coerenti con la matrice.</li>
+              <li><span class="text-fg">Dischi</span> — controlla su quale disco lavorerà <span class="font-mono">create_disk</span> su ogni nodo.</li>
+              <li><span class="text-fg">Dry-Run</span> — diff reale sui tag <span class="font-mono">disk</span>, <span class="font-mono">hosts</span>, <span class="font-mono">nginx</span>.</li>
+              <li><span class="text-fg">Deploy</span> — esecuzione, preferibilmente un tag alla volta.</li>
+            </ol>
+          </div>
+
+          <div class="card p-6">
+            <div class="font-semibold text-[15px] mb-3">Comandi equivalenti</div>
+            <div class="space-y-3" id="howto-cmds"></div>
+          </div>
+
+          <div class="card p-6">
+            <div class="font-semibold text-[15px] mb-3">Avvio della dashboard</div>
+            <div class="code mb-3"><span>cd dashboard &amp;&amp; ./start.sh</span></div>
+            <p class="text-[12.5px] text-fg-mute">
+              Ascolta su <span class="font-mono text-fg">127.0.0.1:8080</span>. Da un'altra macchina usa un tunnel SSH:
+            </p>
+            <div class="code mt-3"><span>ssh -L 8080:localhost:8080 root@&lt;controller&gt;</span></div>
+          </div>
+
+          <div class="card p-6">
+            <div class="font-semibold text-[15px] mb-3">File del progetto</div>
+            <div class="flex flex-wrap gap-2" id="howto-files"></div>
+            <pre id="file-view" class="hidden mt-4 term term-out text-[12px]" style="max-height:460px"></pre>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<!-- terminale (clonato in ogni schermata operativa) -->
+<template id="tpl-term">
+  <div class="term flex flex-col h-full !rounded-none !border-0">
+    <div class="flex items-center justify-between px-4 py-2.5 border-b border-rule shrink-0">
+      <div class="flex items-center gap-2 min-w-0">
+        <i data-lucide="square-terminal" class="w-3.5 h-3.5 text-fg-mute shrink-0"></i>
+        <span class="text-[12px] font-medium truncate term-action">output</span>
+      </div>
+      <div class="flex items-center gap-2 shrink-0">
+        <span class="text-[11px] text-fg-dim term-lines">0 righe</span>
+        <span class="badge badge-pend term-status"><span class="dot"></span>idle</span>
+        <button class="icon-btn !w-7 !h-7" data-term-clear title="Pulisci"><i data-lucide="eraser" class="w-3.5 h-3.5"></i></button>
+      </div>
+    </div>
+    <div class="term-out flex-1 min-h-0"></div>
+  </div>
+</template>
+
+<!-- modale di conferma deploy -->
+<div id="modal" class="hidden fixed inset-0 z-50 modal-back items-center justify-center p-6">
+  <div class="card w-full max-w-md p-6" style="box-shadow:0 24px 64px rgba(0,0,0,.6)">
+    <div class="flex items-start gap-3 mb-4">
+      <div class="w-10 h-10 rounded-md flex items-center justify-center shrink-0" style="background:rgba(226,85,85,.1); border:1px solid rgba(226,85,85,.3)">
+        <i data-lucide="triangle-alert" class="w-5 h-5 text-bad"></i>
+      </div>
+      <div class="min-w-0">
+        <div class="font-semibold text-[15px]">Conferma esecuzione reale</div>
+        <p class="text-[12.5px] text-fg-mute mt-1" id="modal-desc"></p>
+      </div>
+    </div>
+    <div class="code mb-4"><span id="modal-cmd" class="break-all"></span></div>
+    <label class="text-[12px] text-fg-mute">Scrivi <span class="font-mono text-fg">ESEGUI</span> per confermare</label>
+    <input class="field mt-2 font-mono" id="modal-input" autocomplete="off" placeholder="ESEGUI" />
+    <div class="flex gap-2 mt-5 justify-end">
+      <button class="btn btn-ghost" id="modal-cancel">Annulla</button>
+      <button class="btn btn-danger" id="modal-ok" disabled>Esegui</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ==========================================================================
+   STATO E UTILITY
+   ========================================================================== */
+const $  = (s, r=document) => r.querySelector(s);
+const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
+
+const ACTION_LABEL = {
+  plan_tasks:'Piano · --list-tasks', plan_hosts:'Piano · --list-hosts',
+  check_disk:'Verifica dischi', check_versions:'Verifica versioni', ping:'Ping host',
+  dryrun_all:'Dry-run · site.yml', dryrun_disk:'Dry-run · disk',
+  dryrun_hosts:'Dry-run · hosts', dryrun_nginx:'Dry-run · nginx',
+  deploy_all:'Deploy · site.yml', deploy_disk:'Deploy · disk', deploy_hosts:'Deploy · hosts',
+  deploy_rancher:'Deploy · rancher', deploy_cluster:'Deploy · cluster',
+  deploy_kubectl:'Deploy · kubectl', deploy_nginx:'Deploy · nginx',
+};
+
+const DEPLOY_CARDS = [
+  { action:'deploy_disk',    title:'Dischi',        tag:'disk',    icon:'hard-drive', danger:true,
+    desc:'Partiziona il disco libero, crea VG/LV, formatta e monta /var/lib/rancher. Operazione distruttiva.' },
+  { action:'deploy_hosts',   title:'/etc/hosts',    tag:'hosts',   icon:'list',       danger:false,
+    desc:'Allinea la risoluzione del dominio Rancher su tutti i nodi.' },
+  { action:'deploy_rancher', title:'Rancher',       tag:'rancher', icon:'box',        danger:false,
+    desc:'Installa RKE2 sul master, Helm, i certificati e il chart Rancher.' },
+  { action:'deploy_cluster', title:'Cluster downstream', tag:'cluster', icon:'network', danger:false,
+    desc:'Crea il cluster via API Rancher e registra manager, worker e ingress.' },
+  { action:'deploy_kubectl', title:'kubectl + DNS', tag:'kubectl', icon:'wrench',     danger:false,
+    desc:'Configura kubectl sui new_managers e applica il fix hostAliases al cattle-cluster-agent.' },
+  { action:'deploy_nginx',   title:'Nginx',         tag:'nginx',   icon:'globe',      danger:false,
+    desc:'Installa e configura il load balancer con i certificati TLS.' },
+  { action:'deploy_all',     title:'Playbook completo', tag:'—',   icon:'rocket',     danger:true, wide:true,
+    desc:'Esegue tutto site.yml nell\'ordine previsto: dischi, hosts, Rancher, cluster, kubectl, nginx.' },
+];
+
+const HOWTO_CMDS = [
+  ['Simulazione offline',   'ansible-playbook -i inventory.ini site.yml --list-tasks'],
+  ['Verifica dischi',       'ansible-playbook -i inventory.ini check_disk.yml'],
+  ['Verifica dischi (1 host)', 'ansible-playbook -i inventory.ini check_disk.yml --limit k8sworker01c'],
+  ['Forza un disco',        'ansible-playbook -i inventory.ini check_disk.yml -e rancher_disk_device=/dev/sdb'],
+  ['Verifica versioni',     'ansible-playbook -i inventory.ini check_versions.yml'],
+  ['Dry-run per tag',       'ansible-playbook -i inventory.ini site.yml --tags disk --check --diff'],
+  ['Deploy completo',       'ansible-playbook -i inventory.ini site.yml'],
+];
+
+const HOWTO_FILES = [
+  'site.yml','check_disk.yml','check_versions.yml','inventory.ini','group_vars/all.yml',
+  'roles/create_disk/tasks/detect.yml','roles/create_disk/tasks/provision.yml',
+  'roles/create_disk/defaults/main.yml','ansible.cfg',
+];
+
+const state = { seen:0, status:'idle', action:null, lines:[], terms:[], polling:false };
+
+/* ==========================================================================
+   ROUTING
+   ========================================================================== */
+const ROUTES = {
+  dashboard:['Panoramica','Dashboard'], inventario:['Panoramica','Inventario'],
+  simulazione:['Panoramica','Simulazione'], dischi:['Verifiche','Dischi'],
+  versioni:['Verifiche','Versioni'], dryrun:['Verifiche','Dry-Run'],
+  deploy:['Esecuzione','Deploy'], howto:['Documentazione','HOW-TO'],
+};
+
+function route() {
+  const hash = (location.hash || '#/dashboard').replace('#/','');
+  const key = ROUTES[hash] ? hash : 'dashboard';
+
+  $$('section[data-screen]').forEach(s => {
+    const on = s.dataset.screen === key;
+    s.classList.toggle('hidden', !on);
+    if (on) { s.classList.remove('rise'); void s.offsetWidth; s.classList.add('rise'); }
+  });
+  $$('.nav-item').forEach(a =>
+    a.dataset.route === key ? a.setAttribute('aria-current','page') : a.removeAttribute('aria-current'));
+
+  $('#breadcrumb').innerHTML =
+    `<span class="text-fg-mute">${ROUTES[key][0]}</span><span class="crumb-sep"></span><span class="text-fg">${ROUTES[key][1]}</span>`;
+
+  mountTerminal(key);
+  if (key === 'dashboard')   loadDashboard();
+  if (key === 'inventario')  loadInventory();
+  if (key === 'simulazione') loadPlan();
+  if (key === 'dischi')      loadDisks();
+  if (key === 'versioni')    loadVersions();
+  window.scrollTo({ top:0 });
+  icons();
+}
+window.addEventListener('hashchange', route);
+
+function icons(){ try { lucide.createIcons(); } catch(e){} }
+
+// Tailwind assente -> attiva il foglio di stile di riserva e il banner.
+if (!document.querySelector('script[src*="tailwind"]') ||
+    typeof tailwind === 'undefined' || !tailwind.config) {
+  document.documentElement.classList.add('no-tw');
+} else {
+  // il CDN puo' rispondere 200 ma non applicare le classi: verifica a posteriori
+  window.addEventListener('load', () => {
+    const probe = document.createElement('div');
+    probe.className = 'hidden';
+    document.body.appendChild(probe);
+    const applied = getComputedStyle(probe).display === 'none';
+    probe.remove();
+    if (!applied) document.documentElement.classList.add('no-tw');
+  });
+}
+
+/* ==========================================================================
+   TERMINALE + POLLING
+   ========================================================================== */
+const ANSI_FG = {30:'a-blk',31:'a-red',32:'a-grn',33:'a-ylw',34:'a-blu',35:'a-mag',36:'a-cyn',37:'a-wht',
+                 90:'a-blk',91:'a-red',92:'a-grn',93:'a-ylw',94:'a-blu',95:'a-mag',96:'a-cyn',97:'a-wht'};
+const esc = s => s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+
+function ansiToHTML(line) {
+  const re = /\x1b\[([\d;]*)m/g;
+  let out='', last=0, cls=[], m;
+  const wrap = (t,c) => !t ? '' : (c.length ? `<span class="${c.join(' ')}">${esc(t)}</span>` : esc(t));
+  while ((m = re.exec(line)) !== null) {
+    out += wrap(line.slice(last, m.index), cls);
+    for (const c of (m[1]||'0').split(';').map(x=>parseInt(x,10)||0)) {
+      if (c===0) cls=[];
+      else if (c===1 && !cls.includes('a-bld')) cls.push('a-bld');
+      else if (c===2 && !cls.includes('a-dim')) cls.push('a-dim');
+      else if (ANSI_FG[c]) { cls = cls.filter(x=>['a-bld','a-dim','a-und'].includes(x)); cls.push(ANSI_FG[c]); }
+    }
+    last = re.lastIndex;
+  }
+  return out + wrap(line.slice(last), cls);
+}
+
+function mountTerminal(key) {
+  const screen = $(`section[data-screen="${key}"]`);
+  const slot = screen && screen.querySelector('[data-term-slot]');
+  if (!slot || slot.dataset.mounted) return;
+  slot.dataset.mounted = '1';
+  const node = $('#tpl-term').content.firstElementChild.cloneNode(true);
+  slot.appendChild(node);
+  state.terms.push({
+    out:node.querySelector('.term-out'), status:node.querySelector('.term-status'),
+    lines:node.querySelector('.term-lines'), action:node.querySelector('.term-action'),
+  });
+  syncTerminals();
+  icons();
+}
+
+function syncTerminals() {
+  const html = state.lines.map(l => `<div>${ansiToHTML(l)}</div>`).join('');
+  const badge = { idle:'badge-pend', running:'badge-run', success:'badge-ok', failed:'badge-bad' }[state.status];
+  state.terms.forEach(t => {
+    t.out.innerHTML = html;
+    t.out.scrollTop = t.out.scrollHeight;
+    t.lines.textContent = `${state.lines.length} righe`;
+    t.status.className = `badge ${badge} term-status`;
+    t.status.innerHTML = `<span class="dot ${state.status==='running'?'pulse':''}"></span>${state.status}`;
+    t.action.textContent = ACTION_LABEL[state.action] || 'output';
+  });
+  const hdr = $('#hdr-job');
+  hdr.classList.toggle('hidden', state.status !== 'running');
+  if (state.status === 'running') $('#hdr-job-txt').textContent = ACTION_LABEL[state.action] || 'in esecuzione';
+}
+
+function appendTerminals(newLines) {
+  if (!newLines.length) return;
+  const html = newLines.map(l => `<div>${ansiToHTML(l)}</div>`).join('');
+  state.terms.forEach(t => {
+    t.out.insertAdjacentHTML('beforeend', html);
+    t.out.scrollTop = t.out.scrollHeight;
+    t.lines.textContent = `${state.lines.length} righe`;
+  });
+}
+
+async function poll() {
+  try {
+    const r = await fetch(`/api/output?since=${state.seen}`);
+    const d = await r.json();
+    if (d.lines.length) { state.lines.push(...d.lines); state.seen = d.total; appendTerminals(d.lines); }
+    const was = state.status;
+    state.status = d.status; state.action = d.action;
+    if (was !== d.status) {
+      syncTerminals();
+      if (d.status === 'success' || d.status === 'failed') onJobEnd(d.action, d.status);
+    }
+    if (d.status === 'running') setTimeout(poll, 700);
+    else state.polling = false;
+  } catch (e) { state.polling = false; }
+}
+
+function onJobEnd(action, status) {
+  setButtonsDisabled(false);
+  if (status === 'success' && action === 'check_disk') loadDisks();
+}
+
+function setButtonsDisabled(v) {
+  $$('[data-action], #btn-check-disk, #btn-plan').forEach(b => { b.disabled = v; });
+}
+
+async function runAction(action, opts={}) {
+  if (state.status === 'running') return;
+  state.lines = []; state.seen = 0; state.status = 'running'; state.action = action;
+  syncTerminals();
+  setButtonsDisabled(true);
+  try {
+    const r = await fetch('/api/run', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ action, ...opts }),
+    });
+    const d = await r.json();
+    if (!r.ok) {
+      state.lines = [`[ERRORE] ${d.error || r.statusText}`];
+      state.status = 'failed'; syncTerminals(); setButtonsDisabled(false); return;
+    }
+  } catch (e) {
+    state.lines = [`[ERRORE] ${e}`]; state.status = 'failed'; syncTerminals(); setButtonsDisabled(false); return;
+  }
+  if (!state.polling) { state.polling = true; poll(); }
+}
+
+/* ==========================================================================
+   DASHBOARD
+   ========================================================================== */
+async function loadDashboard() {
+  const [inv, ver, env] = await Promise.all([
+    fetch('/api/inventory').then(r=>r.json()),
+    fetch('/api/versions').then(r=>r.json()),
+    fetch('/api/env').then(r=>r.json()),
+  ]);
+
+  const hosts = inv.groups.filter(g=>g.name!=='local').reduce((n,g)=>n+g.hosts.length,0);
+  $('#kpi-hosts').textContent = hosts;
+  $('#kpi-groups').textContent = inv.groups.map(g=>`${g.name} ${g.hosts.length}`).join(' · ');
+
+  const ok = (ver.checks||[]).filter(c=>c.ok).length, tot = (ver.checks||[]).length;
+  $('#kpi-checks').innerHTML = `${ok}<span class="text-fg-mute text-[18px]">/${tot}</span>`;
+  $('#kpi-checks-sub').textContent = ok===tot ? 'tutti coerenti' : 'verifica la pagina Versioni';
+
+  $('#kpi-ansible').textContent = env.ansible || 'ansible non trovato';
+  $('#kpi-repo').textContent = env.repo || '';
+  $('#hdr-domain').textContent = (ver.values && ver.values.rancher_domain) || '—';
+
+  $('#ver-mini').innerHTML = [
+    ['Rancher', ver.values.rancher_version],
+    ['RKE2 (locale)', ver.values.rke2_version],
+    ['Kubernetes (downstream)', ver.values.cluster_k8s_version],
+    ['Helm', ver.values.helm_version],
+  ].map(([k,v]) => `
+    <div class="flex items-center justify-between gap-3">
+      <span class="text-fg-mute">${esc(k)}</span>
+      <span class="font-mono text-fg">${esc(String(v||'—'))}</span>
+    </div>`).join('');
+  icons();
+}
+
+/* ==========================================================================
+   INVENTARIO
+   ========================================================================== */
+async function loadInventory() {
+  const d = await fetch('/api/inventory').then(r=>r.json());
+  $('#inv-body').innerHTML = d.error
+    ? `<div class="card p-5 text-bad text-[13px]">${esc(d.error)}</div>`
+    : d.groups.map(g => `
+      <div class="card overflow-hidden">
+        <div class="px-5 py-3 border-b border-rule flex items-center justify-between">
+          <div class="font-medium text-[13px] font-mono">[${esc(g.name)}]</div>
+          <span class="badge badge-info"><span class="dot"></span>${g.hosts.length} host</span>
+        </div>
+        <table class="tbl">
+          <thead><tr><th>Host</th><th>Indirizzo</th><th>Utente</th></tr></thead>
+          <tbody>${g.hosts.map(h=>`
+            <tr>
+              <td class="font-mono">${esc(h.name)}</td>
+              <td class="font-mono text-fg-mute">${esc(h.ip || h.connection)}</td>
+              <td class="text-fg-mute">${esc(h.user || '—')}</td>
+            </tr>`).join('')}</tbody>
+        </table>
+      </div>`).join('');
+  icons();
+}
+
+/* ==========================================================================
+   SIMULAZIONE
+   ========================================================================== */
+async function loadPlan() {
+  const body = $('#plan-body');
+  body.innerHTML = `<div class="text-[13px] text-fg-mute py-6">Generazione del piano…</div>`;
+  const d = await fetch('/api/plan').then(r=>r.json());
+
+  if (d.error) {
+    body.innerHTML = `<div class="card p-5"><div class="text-bad text-[13px] font-medium mb-2">Impossibile generare il piano</div>
+      <pre class="term term-out text-[12px] max-h-64">${esc(d.error)}</pre></div>`;
+    $('#plan-kpi').innerHTML = ''; return;
+  }
+
+  const hosts = new Set(); d.plays.forEach(p => p.hosts.forEach(h => hosts.add(h)));
+  $('#plan-kpi').innerHTML = `
+    <span class="chip"><i data-lucide="layers" class="w-3 h-3"></i>${d.plays.length} play</span>
+    <span class="chip"><i data-lucide="server" class="w-3 h-3"></i>${hosts.size} host</span>
+    <span class="chip"><i data-lucide="list-checks" class="w-3 h-3"></i>${d.totalTasks} task</span>`;
+
+  // segnala play consecutivi identici (stesso pattern e stessa lista di task)
+  const sig = p => p.pattern + '||' + p.tasks.map(t=>t.role+':'+t.name).join('|');
+  const dupes = new Set();
+  for (let i=1; i<d.plays.length; i++) if (sig(d.plays[i]) === sig(d.plays[i-1])) dupes.add(d.plays[i].index);
+
+  body.innerHTML = d.plays.map(p => {
+    const roles = [];
+    p.tasks.forEach(t => {
+      const r = t.role || '(inline)';
+      const last = roles[roles.length-1];
+      if (last && last.role === r) last.tasks.push(t.name); else roles.push({ role:r, tasks:[t.name] });
+    });
+    return `
+    <div class="tl-node ${dupes.has(p.index)?'tl-mute':''} mb-4">
+      <div class="card">
+        <div class="px-5 py-4 border-b border-rule">
+          <div class="flex items-center gap-2 flex-wrap mb-2">
+            <span class="text-[11px] font-mono text-fg-dim">play #${p.index}</span>
+            ${p.tags.map(t=>`<span class="badge badge-info"><span class="dot"></span>${esc(t)}</span>`).join('')}
+            ${dupes.has(p.index)?`<span class="badge badge-run"><span class="dot"></span>identico al play precedente</span>`:''}
+          </div>
+          <div class="font-medium text-[14px] font-mono">${esc(p.pattern)}</div>
+          <div class="flex flex-wrap gap-1.5 mt-3">
+            ${p.hosts.length
+              ? p.hosts.map(h=>`<span class="chip">${esc(h)}</span>`).join('')
+              : '<span class="text-[12px] text-fg-dim">nessun host corrispondente</span>'}
+          </div>
+        </div>
+        <details class="group">
+          <summary class="px-5 py-3 cursor-pointer flex items-center justify-between text-[12.5px] text-fg-mute hover:text-fg">
+            <span>${p.tasks.length} task in ${roles.length} ruolo/i</span>
+            <i data-lucide="chevron-right" class="caret w-3.5 h-3.5 transition-transform"></i>
+          </summary>
+          <div class="px-5 pb-4 space-y-3">
+            ${roles.map(r=>`
+              <div>
+                <div class="text-[11px] font-mono text-brand mb-1.5">${esc(r.role)}</div>
+                <ol class="space-y-1 text-[12.5px] text-fg-mute list-decimal pl-5">
+                  ${r.tasks.map(n=>`<li>${esc(n)}</li>`).join('')}
+                </ol>
+              </div>`).join('')}
+          </div>
+        </details>
+      </div>
+    </div>`;
+  }).join('');
+  icons();
+}
+
+/* ==========================================================================
+   DISCHI
+   ========================================================================== */
+async function loadDisks() {
+  const d = await fetch('/api/disks').then(r=>r.json());
+  $('#disk-ts').textContent = d.generated_at ? new Date(d.generated_at).toLocaleString('it-IT') : '—';
+
+  if (d.error || !(d.hosts||[]).length) {
+    $('#disk-body').innerHTML = `<div class="card p-6 text-[13px] text-fg-mute">${esc(d.error || 'Nessun dato.')}</div>`;
+    return;
+  }
+
+  $('#disk-body').innerHTML = d.hosts.map(h => {
+    if (!h.scanned) return `
+      <div class="card p-4 opacity-60">
+        <div class="flex items-center justify-between">
+          <div class="font-mono text-[13px]">${esc(h.host)} <span class="text-fg-dim">${esc(h.ip)}</span></div>
+          <span class="badge badge-pend"><span class="dot"></span>non analizzato</span>
+        </div>
+      </div>`;
+
+    const badge = h.existing_lv
+      ? `<span class="badge badge-info"><span class="dot"></span>LVM già presente</span>`
+      : (h.selected
+        ? `<span class="badge badge-ok"><span class="dot"></span>${esc(h.selected)}</span>`
+        : `<span class="badge badge-bad"><span class="dot"></span>nessun disco libero</span>`);
+
+    return `
+    <div class="card overflow-hidden">
+      <div class="px-5 py-3.5 border-b border-rule flex items-center justify-between gap-3 flex-wrap">
+        <div class="font-mono text-[13px]">${esc(h.host)} <span class="text-fg-dim">${esc(h.ip)}</span></div>
+        ${badge}
+      </div>
+      <div>
+        ${(h.disks||[]).map(dk => {
+          const free = dk.reason === 'LIBERO';
+          const pick = dk.name === h.selected;
+          return `
+          <div class="disk-row ${pick?'disk-pick':(free?'disk-free':'disk-used')} px-5 py-3 border-b border-rule flex items-center gap-4 flex-wrap">
+            <span class="font-mono text-[13px] w-[130px] shrink-0">${esc(dk.name)}</span>
+            <span class="font-mono text-[12px] text-fg-mute w-[90px] shrink-0">${esc(String(dk.size_gib))} GiB</span>
+            <span class="text-[12.5px] ${free?'text-ok':'text-fg-mute'} flex-1 min-w-[220px]">${esc(dk.reason)}</span>
+            ${pick?'<span class="badge badge-ok"><span class="dot"></span>selezionato</span>':''}
+          </div>`;
+        }).join('') || '<div class="px-5 py-4 text-[12.5px] text-fg-dim">Nessun disco rilevato.</div>'}
+      </div>
+      ${h.partition ? `
+      <div class="px-5 py-3 bg-ink-700 text-[12.5px] text-fg-mute">
+        Verrebbe creata la partizione <span class="font-mono text-fg">${esc(h.partition)}</span>,
+        VG <span class="font-mono text-fg">${esc(d.vg_name)}</span>,
+        LV <span class="font-mono text-fg">${esc(d.lv_name)}</span>,
+        montata su <span class="font-mono text-fg">${esc(d.mount_point)}</span>.
+      </div>` : ''}
+    </div>`;
+  }).join('');
+  icons();
+}
+
+/* ==========================================================================
+   VERSIONI
+   ========================================================================== */
+const MATRIX = { '2.14':['1.33','1.34','1.35'], '2.13':['1.32','1.33','1.34'],
+                 '2.12':['1.31','1.32','1.33'], '2.11':['1.30','1.31','1.32'] };
+
+const VER_NOTES = {
+  rancher_version:'Deve esistere sul canale rancher-stable',
+  rke2_version:'Cluster locale che ospita Rancher',
+  cluster_k8s_version:'Cluster downstream creati via API',
+  helm_version:'Linea 3.x: i chart Rancher non supportano Helm 4',
+  rancher_domain:'FQDN della console',
+  cluster_name:'Nome del cluster downstream',
+  cluster_cni:'Plugin di rete',
+  rancher_disk_device:'Vuoto = selezione automatica del disco',
+};
+
+async function loadVersions() {
+  const d = await fetch('/api/versions').then(r=>r.json());
+  const rows = ['rancher_version','rke2_version','cluster_k8s_version','helm_version',
+                'rancher_domain','cluster_name','cluster_cni','rancher_disk_device'];
+  $('#ver-table').innerHTML = rows.map(k=>`
+    <tr>
+      <td class="font-mono text-fg-mute">${esc(k)}</td>
+      <td class="font-mono">${esc(String(d.values[k] ?? '') || '(vuoto)')}</td>
+      <td class="text-fg-mute text-[12px]">${esc(VER_NOTES[k]||'')}</td>
+    </tr>`).join('');
+
+  $('#ver-checks').innerHTML = (d.checks||[]).map(c=>`
+    <div class="card p-4 flex items-start gap-3">
+      <i data-lucide="${c.ok?'check-circle-2':'x-circle'}" class="w-4 h-4 shrink-0 mt-0.5 ${c.ok?'text-ok':'text-bad'}"></i>
+      <div class="min-w-0">
+        <div class="text-[13px] font-medium flex items-center gap-2 flex-wrap">
+          <span class="badge ${c.ok?'badge-ok':'badge-bad'}"><span class="dot"></span>${c.ok?'OK':'DA CORREGGERE'}</span>
+          ${esc(c.label)}
+        </div>
+        <div class="text-[12px] text-fg-mute mt-1 font-mono break-words">${esc(c.detail)}</div>
+      </div>
+    </div>`).join('');
+
+  $('#matrix-table').innerHTML = Object.entries(MATRIX).map(([r,ks])=>`
+    <tr${r===d.rancherMinor?' style="background:rgba(232,168,56,.06)"':''}>
+      <td class="font-mono">${esc(r)}${r===d.rancherMinor?' <span class="badge badge-ok ml-2"><span class="dot"></span>in uso</span>':''}</td>
+      <td class="font-mono text-fg-mute">${ks.join(' · ')}</td>
+    </tr>`).join('');
+  icons();
+}
+
+/* ==========================================================================
+   DEPLOY + MODALE
+   ========================================================================== */
+function renderDeployCards() {
+  $('#deploy-cards').innerHTML = DEPLOY_CARDS.map(c=>`
+    <div class="card card-hover p-5 ${c.wide?'md:col-span-2':''}" ${c.danger?'style="border-color:rgba(226,85,85,.35)"':''}>
+      <div class="flex items-center gap-3 mb-3">
+        <i data-lucide="${c.icon}" class="w-4 h-4 ${c.danger?'text-bad':'text-fg-mute'}"></i>
+        <span class="badge ${c.danger?'badge-bad':'badge-info'}"><span class="dot"></span>tag: ${esc(c.tag)}</span>
+      </div>
+      <div class="font-medium text-[14px] mb-1">${esc(c.title)}</div>
+      <p class="text-[12px] text-fg-mute mb-4">${esc(c.desc)}</p>
+      <button class="btn ${c.danger?'btn-danger':'btn-ghost'} w-full justify-center"
+              data-deploy="${c.action}"><i data-lucide="play" class="w-4 h-4"></i>Esegui</button>
+    </div>`).join('');
+  icons();
+}
+
+let _pending = null;
+function openModal(action) {
+  _pending = action;
+  const card = DEPLOY_CARDS.find(c=>c.action===action) || {};
+  $('#modal-desc').textContent = card.desc || '';
+  const limit = $('#deploy-limit').value.trim();
+  const tagPart = card.tag && card.tag !== '—' ? ` --tags ${card.tag}` : '';
+  $('#modal-cmd').textContent = `ansible-playbook -i inventory.ini site.yml${tagPart}${limit?` --limit ${limit}`:''}`;
+  $('#modal-input').value = ''; $('#modal-ok').disabled = true;
+  $('#modal').classList.remove('hidden'); $('#modal').classList.add('flex');
+  $('#modal-input').focus(); icons();
+}
+function closeModal(){ _pending=null; $('#modal').classList.add('hidden'); $('#modal').classList.remove('flex'); }
+
+/* ==========================================================================
+   HOW-TO
+   ========================================================================== */
+function renderHowTo() {
+  $('#howto-cmds').innerHTML = HOWTO_CMDS.map(([label,cmd])=>`
+    <div>
+      <div class="text-[11.5px] text-fg-mute mb-1.5">${esc(label)}</div>
+      <div class="code"><span class="break-all">${esc(cmd)}</span>
+        <button class="icon-btn !w-7 !h-7 shrink-0" data-copy="${esc(cmd)}" title="Copia"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button>
+      </div>
+    </div>`).join('');
+  $('#howto-files').innerHTML = HOWTO_FILES.map(f=>
+    `<button class="btn btn-ghost btn-sm font-mono" data-file="${esc(f)}">${esc(f)}</button>`).join('');
+  icons();
+}
+
+async function showFile(path) {
+  const pre = $('#file-view');
+  pre.classList.remove('hidden');
+  pre.textContent = 'Caricamento…';
+  const r = await fetch(`/api/file?path=${encodeURIComponent(path)}`);
+  const d = await r.json();
+  pre.textContent = d.error ? `[${path}] ${d.error}` : d.content;
+}
+
+/* ==========================================================================
+   EVENTI
+   ========================================================================== */
+document.addEventListener('click', e => {
+  const act = e.target.closest('[data-action]');
+  if (act) { runAction(act.dataset.action); return; }
+
+  const dep = e.target.closest('[data-deploy]');
+  if (dep) { openModal(dep.dataset.deploy); return; }
+
+  const file = e.target.closest('[data-file]');
+  if (file) { showFile(file.dataset.file); return; }
+
+  const copy = e.target.closest('[data-copy]');
+  if (copy) {
+    navigator.clipboard.writeText(copy.dataset.copy).then(()=>{
+      const i = copy.querySelector('i'); if(!i) return;
+      copy.innerHTML = '<i data-lucide="check" class="w-3.5 h-3.5"></i>'; icons();
+      setTimeout(()=>{ copy.innerHTML = '<i data-lucide="copy" class="w-3.5 h-3.5"></i>'; icons(); }, 1200);
+    });
+    return;
+  }
+
+  if (e.target.closest('[data-term-clear]')) {
+    state.lines = []; syncTerminals(); return;
+  }
+});
+
+$('#btn-plan').addEventListener('click', loadPlan);
+$('#btn-refresh').addEventListener('click', route);
+
+$('#btn-check-disk').addEventListener('click', () => runAction('check_disk', {
+  limit: $('#disk-limit').value.trim(),
+  device: $('#disk-device').value.trim(),
+}));
+
+$('#modal-input').addEventListener('input', e => {
+  $('#modal-ok').disabled = e.target.value.trim().toUpperCase() !== 'ESEGUI';
+});
+$('#modal-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !$('#modal-ok').disabled) $('#modal-ok').click();
+});
+$('#modal-cancel').addEventListener('click', closeModal);
+$('#modal-ok').addEventListener('click', () => {
+  const a = _pending; closeModal();
+  if (a) runAction(a, { limit: $('#deploy-limit').value.trim() });
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+/* ==========================================================================
+   AVVIO
+   ========================================================================== */
+renderDeployCards();
+renderHowTo();
+route();
+poll();
+</script>
+</body>
+</html>

@@ -107,6 +107,33 @@
           {{ rancher_version }}.
       when: _rancher_minor in rancher_k8s_matrix
 
+    - name: "Verifica che il binario Helm {{ helm_version }} sia scaricabile"
+      ansible.builtin.uri:
+        url: "https://get.helm.sh/helm-{{ helm_version }}-linux-amd64.tar.gz"
+        method: HEAD
+        status_code: [200]
+      register: helm_head
+      failed_when: false
+
+    - name: "Esito controllo Helm"
+      ansible.builtin.assert:
+        that:
+          - helm_head.status == 200
+        fail_msg: >-
+          helm_version '{{ helm_version }}' non e' scaricabile da get.helm.sh
+          (HTTP {{ helm_head.status }}). Verificare il tag su
+          https://github.com/helm/helm/releases
+        success_msg: >-
+          helm_version {{ helm_version }} disponibile su get.helm.sh.
+
+    - name: "Avvisa se Helm non e' sulla linea 3.x"
+      ansible.builtin.debug:
+        msg: >-
+          ATTENZIONE: helm_version {{ helm_version }} non e' sulla linea 3.x.
+          I chart Rancher sono validati su Helm 3; Helm 4 introduce breaking
+          change non supportate da Rancher 2.14.
+      when: not (helm_version is match('^v3\\.'))
+
     - name: "Avvisa se la minor di Rancher non e' in matrice"
       ansible.builtin.debug:
         msg: >-

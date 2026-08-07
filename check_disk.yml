@@ -46,6 +46,44 @@
       loop_control:
         label: "{{ item }}"
 
+    # Artefatto letto dalla dashboard web (dashboard/app.py -> /api/disks)
+    # per mostrare la tabella dei dischi senza dover riparsare l'output testuale.
+    - name: "Componi il report JSON per la dashboard"
+      ansible.builtin.set_fact:
+        _disk_json: "{{ _disk_json | default([]) + [_entry] }}"
+      vars:
+        _hv: "{{ hostvars[item] }}"
+        _entry:
+          host: "{{ item }}"
+          ip: "{{ _hv['ansible_host'] | default('') }}"
+          scanned: "{{ _hv['create_disk_report'] is defined }}"
+          existing_lv: "{{ (_hv['create_disk_existing_lv'] | default({})).get('stat', {}).get('exists', false) }}"
+          selected: "{{ _hv['selected_disk'] | default('') }}"
+          partition: "{{ _hv['rancher_partition'] | default('') }}"
+          disks: "{{ _hv['create_disk_report'] | default([]) }}"
+      loop: "{{ _targets }}"
+      loop_control:
+        label: "{{ item }}"
+
+    - name: "Crea la directory di stato della dashboard"
+      ansible.builtin.file:
+        path: "{{ playbook_dir }}/dashboard/state"
+        state: directory
+        mode: "0755"
+
+    - name: "Salva dashboard/state/disks.json"
+      ansible.builtin.copy:
+        content: "{{ _payload | to_nice_json }}"
+        dest: "{{ playbook_dir }}/dashboard/state/disks.json"
+        mode: "0644"
+      vars:
+        _payload:
+          generated_at: "{{ now(utc=true).isoformat() }}"
+          vg_name: "{{ vg_name }}"
+          lv_name: "{{ lv_name }}"
+          mount_point: "{{ rancher_mount_point }}"
+          hosts: "{{ _disk_json | default([]) }}"
+
     - name: "Come procedere"
       ansible.builtin.debug:
         msg:

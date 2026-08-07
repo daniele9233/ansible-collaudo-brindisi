@@ -1,8 +1,20 @@
 ---
+# Tag disponibili (usati anche dalla dashboard per le azioni granulari):
+#   disk     setup del disco dati dedicato
+#   hosts    aggiornamento /etc/hosts
+#   rancher  installazione RKE2 + Helm + cert-manager + Rancher sui master
+#   cluster  creazione cluster downstream via API Rancher e join dei nodi
+#   kubectl  setup kubectl e fix DNS sui new_managers
+#   nginx    installazione e configurazione del load balancer
+#
+#   ansible-playbook -i inventory.ini site.yml --tags disk
+#   ansible-playbook -i inventory.ini site.yml --skip-tags nginx
+
 # PRIMO PLAY: Setup disco dedicato per tutti i nodi del cluster
 - hosts: masters:new_managers:workers:ingress
   become: yes
   gather_facts: yes
+  tags: [disk]
   roles:
     - role: create_disk
 
@@ -10,6 +22,7 @@
 - hosts: all,local
   become: yes
   gather_facts: no
+  tags: [hosts]
   roles:
     - role: update_hosts_file
 
@@ -18,6 +31,7 @@
 - hosts: masters
   become: yes
   gather_facts: no
+  tags: [rancher]
   roles:
     - role: master1_install
     - role: master1_config
@@ -29,6 +43,7 @@
 - hosts: masters
   become: yes
   gather_facts: no
+  tags: [cluster]
   roles:
     - role: master1_create_cluster
 
@@ -36,16 +51,18 @@
 - name: "Pausa dopo creazione cluster"
   hosts: localhost
   gather_facts: no
+  tags: [cluster]
   tasks:
     - name: Attendi 180 secondi prima setup kubectl
       pause:
         seconds: 180
-        prompt: "Attendendo 60 secondi dopo creazione cluster..."
+        prompt: "Attendendo 180 secondi dopo creazione cluster..."
 
 # QUINTO PLAY: Setup kubectl sui nuovi manager
 - hosts: new_managers
   become: yes
   gather_facts: no
+  tags: [kubectl]
   roles:
     - kubectl_setup
 
@@ -54,6 +71,7 @@
 - hosts: new_managers
   become: yes
   gather_facts: no
+  tags: [kubectl]
   roles:
     - kubectl_setup
 
@@ -62,6 +80,7 @@
 - name: Install and configure Nginx
   hosts: nginx_servers
   become: yes
+  tags: [nginx]
   vars_files:
     - group_vars/all.yml
   roles:
