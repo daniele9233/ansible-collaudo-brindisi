@@ -16,6 +16,18 @@ Per usarla da un'altra macchina apri un tunnel SSH:
 ssh -L 8080:localhost:8080 root@<controller>
 ```
 
+### Porta gia' occupata
+
+Se sulla stessa macchina gira gia' un'altra dashboard sulla 8080:
+
+```bash
+FARO_PORT=8090 ./start.sh
+```
+
+Ricorda di usare la stessa porta anche nel tunnel SSH
+(`ssh -L 8090:localhost:8090 ...`). All'avvio, se la porta e' occupata,
+Faro stampa quale processo la sta usando.
+
 Se Ansible è in un virtualenv diverso da `~/ansible-env`:
 
 ```bash

@@ -137,6 +137,10 @@ DASHBOARD WEB (opzionale)
 Poi apri http://127.0.0.1:8080 (ascolta solo in locale, senza autenticazione:
 da un'altra macchina usa un tunnel SSH -L 8080:localhost:8080).
 
+Se la porta 8080 e' gia' occupata da un altro servizio:
+
+    FARO_PORT=8090 ./start.sh
+
 Permette di fare dalla GUI tutto quello descritto sopra:
 
     Simulazione   piano completo di site.yml SENZA connettersi ai server

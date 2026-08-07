@@ -18,11 +18,20 @@ import subprocess
 import threading
 import configparser
 import shutil
+import socket
+import errno
 import json
+import sys
 import os
 import re
 
 app = Flask(__name__)
+
+# Porta di ascolto. Sovrascrivibile con FARO_PORT o PORT, utile quando sulla
+# stessa macchina gira gia' un'altra dashboard sulla 8080.
+#   FARO_PORT=8090 ./start.sh
+HOST = '127.0.0.1'
+PORT = int(os.environ.get('FARO_PORT') or os.environ.get('PORT') or 8080)
 
 # Radice del repository Ansible (la dashboard vive in <repo>/dashboard).
 ANSIBLE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -531,6 +540,45 @@ def api_env():
     })
 
 
+def _port_owner(port):
+    """Chi occupa la porta, per dare un messaggio utile invece del solo errore."""
+    for cmd in (['ss', '-lptn', f'sport = :{port}'], ['lsof', '-i', f':{port}', '-sTCP:LISTEN']):
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+            if r.returncode == 0 and len(r.stdout.strip().splitlines()) > 1:
+                return r.stdout.strip()
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            continue
+    return None
+
+
+def _check_port_free(host, port):
+    """Werkzeug intercetta da solo EADDRINUSE con un messaggio generico, quindi
+    la porta va sondata prima di avviare il server per poter dire chi la occupa."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sock.bind((host, port))
+        except OSError as exc:
+            if exc.errno != errno.EADDRINUSE:
+                raise
+            return False
+    return True
+
+
 if __name__ == '__main__':
     os.makedirs(STATE_DIR, exist_ok=True)
-    app.run(host='127.0.0.1', port=8080, debug=False, threaded=True)
+
+    if not _check_port_free(HOST, PORT):
+        print(f"\n  La porta {PORT} e' gia' occupata su {HOST}.\n", file=sys.stderr)
+        owner = _port_owner(PORT)
+        if owner:
+            print('  In ascolto attualmente:', file=sys.stderr)
+            for line in owner.splitlines():
+                print(f'    {line}', file=sys.stderr)
+            print('', file=sys.stderr)
+        print("  Avvia Faro su un'altra porta:", file=sys.stderr)
+        print('    FARO_PORT=8090 ./start.sh\n', file=sys.stderr)
+        sys.exit(1)
+
+    app.run(host=HOST, port=PORT, debug=False, threaded=True)
