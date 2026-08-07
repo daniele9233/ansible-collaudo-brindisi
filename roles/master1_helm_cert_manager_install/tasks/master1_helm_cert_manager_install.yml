@@ -1,24 +1,38 @@
 ---
-- name: Add Rancher Helm repository
-  command: helm repo add rancher-stable https://releases.rancher.com/server-charts/stable
+# Tutti i task sono idempotenti: il playbook va rilanciato piu' volte durante
+# la messa a punto e non deve fallire perche' namespace o secret esistono gia'.
 
-- name: Create cattle-system namespace
-  command: kubectl create namespace cattle-system
+- name: Add Rancher Helm repository
+  ansible.builtin.command: helm repo add rancher-stable https://releases.rancher.com/server-charts/stable --force-update
+  register: helm_repo_add
+  changed_when: "'has been added' in helm_repo_add.stdout"
 
 - name: Update Helm repositories
-  command: helm repo update
+  ansible.builtin.command: helm repo update rancher-stable
+  changed_when: false
+
+- name: Create cattle-system namespace
+  ansible.builtin.shell:
+    cmd: >-
+      kubectl create namespace cattle-system --dry-run=client -o yaml
+      | kubectl apply -f -
+    executable: /bin/bash
+  register: ns_apply
+  changed_when: "'created' in ns_apply.stdout"
 
 - name: Set kube permission
-  command: chmod 600 /root/.kube/config
+  ansible.builtin.file:
+    path: /root/.kube/config
+    mode: "0600"
 
 - name: Copy fullchain.pem to remote host
-  copy:
+  ansible.builtin.copy:
     src: "{{ fullchain_pem_file }}"
     dest: "{{ remote_cert_path }}/fullchain.pem"
     mode: '0644'
 
 - name: Copy privkey.pem to remote host
-  copy:
+  ansible.builtin.copy:
     src: "{{ privkey_pem_file }}"
     dest: "{{ remote_cert_path }}/privkey.pem"
     mode: '0600'
@@ -27,46 +41,107 @@
   no_log: true
 
 - name: Copy cacerts.pem to remote host
-  copy:
+  ansible.builtin.copy:
     src: "{{ cacerts_pem_file }}"
     dest: "{{ remote_cert_path }}/cacerts.pem"
     mode: '0644'
 
 - name: Create TLS secret for Rancher ingress
-  command: kubectl -n cattle-system create secret tls tls-rancher-ingress --cert={{ remote_cert_path }}/fullchain.pem --key={{ remote_cert_path }}/privkey.pem
+  ansible.builtin.shell:
+    cmd: >-
+      kubectl -n cattle-system create secret tls tls-rancher-ingress
+      --cert={{ remote_cert_path }}/fullchain.pem
+      --key={{ remote_cert_path }}/privkey.pem
+      --dry-run=client -o yaml | kubectl apply -f -
+    executable: /bin/bash
+  register: tls_secret
+  changed_when: "'created' in tls_secret.stdout"
 
 - name: Create CA secret for Rancher
-  command: kubectl -n cattle-system create secret generic tls-ca --from-file={{ remote_cert_path }}/cacerts.pem
+  ansible.builtin.shell:
+    cmd: >-
+      kubectl -n cattle-system create secret generic tls-ca
+      --from-file={{ remote_cert_path }}/cacerts.pem
+      --dry-run=client -o yaml | kubectl apply -f -
+    executable: /bin/bash
+  register: ca_secret
+  changed_when: "'created' in ca_secret.stdout"
 
 - name: Verify secrets creation
-  command: kubectl get secret -n cattle-system
+  ansible.builtin.command: kubectl get secret -n cattle-system
+  register: secrets_list
+  changed_when: false
 
+- name: Display secrets
+  ansible.builtin.debug:
+    var: secrets_list.stdout_lines
+
+# helm upgrade --install invece di helm install: la seconda esecuzione del
+# playbook non deve fallire con "cannot re-use a name that is still in use".
 - name: Install Rancher with Helm
-  command: >
-    helm install rancher rancher-stable/rancher
+  ansible.builtin.command: >
+    helm upgrade --install rancher rancher-stable/rancher
     --namespace cattle-system
+    --version {{ rancher_version }}
     --set hostname={{ rancher_domain }}
     --set bootstrapPassword={{ rancher_password }}
-    --version {{ rancher_version }}
     --set ingress.tls.source=secret
     --set privateCA=true
+    --wait --timeout {{ helm_timeout }}
+  register: helm_rancher
+  failed_when: false
 
 - name: Wait for Rancher to be ready
-  command: kubectl -n cattle-system wait --for=condition=ready pod -l app=rancher --timeout=600s
-  ignore_errors: yes
+  ansible.builtin.command: >
+    kubectl -n cattle-system wait --for=condition=ready pod -l app=rancher --timeout=600s
+  register: rancher_wait
+  changed_when: false
+  failed_when: false
 
 - name: Check Rancher pod status
-  command: kubectl -n cattle-system get pods -l app=rancher
+  ansible.builtin.command: kubectl -n cattle-system get pods -l app=rancher
   register: rancher_pods
+  changed_when: false
 
 - name: Display Rancher pod status
-  debug:
+  ansible.builtin.debug:
     var: rancher_pods.stdout_lines
 
+# Se i pod non partono, la causa e' negli Events: senza questo blocco il
+# playbook mostrava solo "ContainerCreating" senza dire perche'.
+- name: Diagnostica dei pod Rancher non pronti
+  ansible.builtin.shell:
+    cmd: |
+      echo '===== DESCRIBE ====='
+      kubectl -n cattle-system describe pod -l app=rancher | grep -A 30 '^Events:' || true
+      echo '===== EVENTS NAMESPACE ====='
+      kubectl -n cattle-system get events --sort-by=.lastTimestamp | tail -25 || true
+      echo '===== NODI ====='
+      kubectl get nodes -o wide || true
+    executable: /bin/bash
+  register: rancher_diag
+  changed_when: false
+  when: rancher_wait.rc != 0
+
+- name: Mostra la diagnostica
+  ansible.builtin.debug:
+    var: rancher_diag.stdout_lines
+  when: rancher_wait.rc != 0
+
+- name: Interrompi se Rancher non e' partito
+  ansible.builtin.fail:
+    msg: >-
+      I pod Rancher non sono diventati Ready. La causa e' nel blocco di
+      diagnostica qui sopra (sezione Events). Cause tipiche:
+      immagine rancher/rancher:v{{ rancher_version }} non scaricabile (registry
+      o proxy aziendale), secret tls-ca mancante, oppure nodo senza risorse.
+  when: rancher_wait.rc != 0
+
 - name: Check Rancher service status
-  command: kubectl -n cattle-system get svc rancher
+  ansible.builtin.command: kubectl -n cattle-system get svc rancher
   register: rancher_svc
+  changed_when: false
 
 - name: Display Rancher service status
-  debug:
+  ansible.builtin.debug:
     var: rancher_svc.stdout_lines
